@@ -17,15 +17,15 @@ import { diag } from '../lib/hands'
  */
 
 const MOVES: { gesture: string; hand: string; does: string }[] = [
-  { gesture: 'point', hand: '☝', does: 'move the cursor' },
-  { gesture: 'pinch', hand: '🤏', does: 'grab a blade · move it · press' },
-  { gesture: 'open', hand: '🖐', does: 'let go' },
-  { gesture: 'peace', hand: '✌', does: 'two fingers up-down to scroll' },
-  { gesture: 'frame', hand: '📐', does: 'two L-corners to resize' },
+  { gesture: 'apuntar', hand: '☝', does: 'mover el cursor en pantalla' },
+  { gesture: 'pellizcar', hand: '🤏', does: 'agarrar panel · mover · hacer clic' },
+  { gesture: 'abrir', hand: '🖐', does: 'soltar panel' },
+  { gesture: 'paz / dos dedos', hand: '✌', does: 'dos dedos arriba/abajo para desplazar' },
+  { gesture: 'marco', hand: '📐', does: 'dos esquinas en L para redimensionar' },
 ]
 
 /** How long the legend stays after the first successful press. */
-const DISMISS_MS = 1400
+const DISMISS_MS = 2500
 
 export function GestureGuide({ live }: { live: boolean }) {
   const [show, show_] = useState(false)
@@ -63,7 +63,7 @@ export function GestureGuide({ live }: { live: boolean }) {
           exit={{ opacity: 0, y: 8, filter: 'blur(6px)', transition: { duration: 0.5 } }}
           transition={{ type: 'spring', stiffness: 260, damping: 28 }}
         >
-          <div className="gguide-head">HAND CONTROL</div>
+          <div className="gguide-head">CONTROL HOLOGRÁFICO POR GESTOS</div>
           {MOVES.map((m) => (
             <div key={m.gesture} className="gguide-row">
               <span className="gguide-icon">{m.hand}</span>
@@ -72,7 +72,7 @@ export function GestureGuide({ live }: { live: boolean }) {
             </div>
           ))}
           <div className="gguide-foot">
-            grab a blade by its bar · <kbd>G</kbd> to stop
+            agarra un panel de la barra · pulsa <kbd>G</kbd> para pausar cámara
           </div>
         </motion.div>
       )}

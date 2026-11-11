@@ -23,8 +23,11 @@ import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
-import { readFile, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
+import { readFile, realpath, stat, readdir, writeFile, mkdir, unlink } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve as resolvePath, dirname } from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+const execFileP = promisify(execFile)
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
 
@@ -290,7 +293,12 @@ function decideTool(name) {
   return ALLOW_WRITES
 }
 
-const SYSTEM_PROMPT = `You are JARVIS. You are speaking out loud to one person.
+const SYSTEM_PROMPT = `You are Agente Milos. You are speaking out loud to one person.
+
+LANGUAGE:
+You MUST ALWAYS speak, formulate, and answer strictly in Spanish (Español).
+Every single response you output will be read out loud to the user in Spanish.
+Keep the signature JARVIS character: dry British butler wit, formal, loyal, and efficient, translated into natural, polished Spanish. Address the user respectfully as "señor" or "sir".
 
 LENGTH. Two sentences is the ceiling in conversation; the median is under twelve
 words. Every word is read aloud and the user waits in silence while it plays, so
@@ -302,7 +310,7 @@ your lines get shorter, not louder. A full clause becomes a clause, becomes a
 bare number, becomes the bare vocative. You never say hurry, quickly, now,
 immediately, critical, urgent, or danger. You do not use exclamation marks.
 
-"SIR" IS POSITIONAL, AND THE POSITION CARRIES THE MEANING.
+"SEÑOR" / "SIR" IS POSITIONAL, AND THE POSITION CARRIES THE MEANING.
 - Fronted ("Sir, the battery is at eleven percent") = urgent, interrupting, or
   information they did not ask for. This is an alarm, not a courtesy.
 - Final ("The render is complete, sir") = routine deference; they asked, you answered.
@@ -662,6 +670,508 @@ function corsFor(req) {
 // One HTTP server for both the speech proxy and the WebSocket upgrade.
 const http = await import('node:http')
 
+// ---------- helpers for new endpoints ----------
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let data = ''
+    req.on('data', (c) => (data += c))
+    req.on('end', () => {
+      try { resolve(data ? JSON.parse(data) : {}) } catch (e) { reject(e) }
+    })
+    req.on('error', reject)
+  })
+}
+
+async function readMultipart(req) {
+  // Minimal multipart parser for single file field 'file'
+  const chunks = []
+  for await (const c of req) chunks.push(c)
+  const buf = Buffer.concat(chunks)
+  const ct = req.headers['content-type'] || ''
+  const m = ct.match(/boundary=(.+)$/)
+  if (!m) throw new Error('no boundary')
+  const boundary = '--' + m[1]
+  const parts = buf.toString('binary').split(boundary)
+  const files = []
+  for (const part of parts) {
+    if (!part.includes('filename=')) continue
+    const headerEnd = part.indexOf('\\r\\n\\r\\n')
+    if (headerEnd < 0) continue
+    const headers = part.slice(0, headerEnd)
+    const body = part.slice(headerEnd + 4)
+    const fm = headers.match(/filename="([^"]+)"/)
+    const name = fm ? fm[1] : 'file'
+    // strip trailing boundary
+    const clean = body.replace(/\\r\\n--$/, '')
+    files.push({ name, data: Buffer.from(clean, 'binary') })
+  }
+  return { files }
+}
+
+async function searchFiles(root, query, max) {
+  const results = []
+  const q = (query || '').toLowerCase()
+  async function walk(dir, depth) {
+    if (depth > 6 || results.length >= max) return
+    let entries
+    try { entries = await readdir(dir, { withFileTypes: true }) } catch { return }
+    for (const e of entries) {
+      if (results.length >= max) return
+      const full = join(dir, e.name)
+      if (e.isDirectory()) {
+        if (e.name.startsWith('.') || e.name === 'node_modules') continue
+        await walk(full, depth + 1)
+      } else {
+        const nameMatch = e.name.toLowerCase().includes(q)
+        let snippet = ''
+        if (!nameMatch && q) {
+          try {
+            const content = await readFile(full, 'utf8')
+            const idx = content.toLowerCase().indexOf(q)
+            if (idx >= 0) {
+              snippet = content.slice(Math.max(0, idx - 60), idx + 120).replace(/\\s+/g, ' ')
+            } else continue
+          } catch { continue }
+        }
+        let size, mtime
+        try { const st = await stat(full); size = st.size; mtime = st.mtimeMs } catch {}
+        results.push({ path: full, name: e.name, snippet, size, mtime })
+      }
+    }
+  }
+  await walk(root, 0)
+  return results
+}
+
+async function listMail(limit) {
+  // IMAP via 'imap' package (optional). If not configured, return [].
+  const host = process.env.MAIL_IMAP_HOST
+  const user = process.env.MAIL_USER
+  const pass = process.env.MAIL_PASS
+  if (!host || !user || !pass) return []
+  const Imap = (await import('imap')).default
+  return new Promise((resolve, reject) => {
+    const imap = new Imap({ host, port: Number(process.env.MAIL_IMAP_PORT ?? 993), user, password: pass, tls: true })
+    const out = []
+    imap.once('ready', () => {
+      imap.openBox('INBOX', true, (err) => {
+        if (err) { imap.end(); return reject(err) }
+        imap.search(['ALL'], (err, results) => {
+          if (err) { imap.end(); return reject(err) }
+          const recent = (results || []).slice(-limit)
+          if (recent.length === 0) { imap.end(); return resolve([]) }
+          const f = imap.fetch(recent, { bodies: 'HEADER.FIELDS (FROM TO SUBJECT DATE)', struct: true })
+          f.on('message', (msg, seqno) => {
+            let header = ''
+            msg.on('body', (stream) => { stream.on('data', (c) => (header += c.toString('utf8'))) })
+            msg.once('end', () => {
+              const get = (k) => (header.match(new RegExp(k + ': (.*)', 'i')) || [])[1] || ''
+              out.push({ id: String(seqno), from: get('From'), subject: get('Subject'), date: get('Date'), preview: '' })
+            })
+          })
+          f.once('end', () => { imap.end(); resolve(out.reverse()) })
+          f.once('error', (e) => { imap.end(); reject(e) })
+        })
+      })
+    })
+    imap.once('error', reject)
+    imap.connect()
+  })
+}
+
+async function readMail(id) {
+  const host = process.env.MAIL_IMAP_HOST
+  const user = process.env.MAIL_USER
+  const pass = process.env.MAIL_PASS
+  if (!host || !user || !pass) throw new Error('Correo no configurado (MAIL_IMAP_HOST/USER/PASS)')
+  const Imap = (await import('imap')).default
+  return new Promise((resolve, reject) => {
+    const imap = new Imap({ host, port: Number(process.env.MAIL_IMAP_PORT ?? 993), user, password: pass, tls: true })
+    imap.once('ready', () => {
+      imap.openBox('INBOX', true, (err) => {
+        if (err) { imap.end(); return reject(err) }
+        const f = imap.fetch(id, { bodies: '' })
+        let body = ''
+        f.on('message', (msg) => {
+          msg.on('body', (stream) => { stream.on('data', (c) => (body += c.toString('utf8'))) })
+          msg.once('end', () => {})
+        })
+        f.once('end', () => { imap.end(); resolve({ id, body }) })
+        f.once('error', (e) => { imap.end(); reject(e) })
+      })
+    })
+    imap.once('error', reject)
+    imap.connect()
+  })
+}
+
+async function sendMail(to, subject, body) {
+  const host = process.env.MAIL_SMTP_HOST || process.env.MAIL_IMAP_HOST
+  const user = process.env.MAIL_USER
+  const pass = process.env.MAIL_PASS
+  if (!host || !user || !pass) return { ok: false, error: 'Correo no configurado' }
+  const nodemailer = await import('nodemailer')
+  const transporter = nodemailer.default.createTransport({
+    host,
+    port: Number(process.env.MAIL_SMTP_PORT ?? 587),
+    secure: false,
+    auth: { user, pass },
+  })
+  await transporter.sendMail({ from: user, to, subject, text: body })
+  return { ok: true }
+}
+
+async function extractArchive(uploaded) {
+  // Use system tools: unzip / 7z / unrar
+  const fs = await import('node:fs/promises')
+  const os = await import('node:os')
+  const path = await import('node:path')
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'jarvis-'))
+  let combined = ''
+  let fileCount = 0
+  for (const f of uploaded) {
+    const archivePath = path.join(tmp, f.name)
+    await fs.writeFile(archivePath, f.data)
+    // try unzip
+    let tool = null
+    if (f.name.toLowerCase().endsWith('.zip')) tool = 'unzip'
+    else if (f.name.toLowerCase().endsWith('.rar')) tool = 'unrar'
+    else if (f.name.toLowerCase().endsWith('.7z')) tool = '7z'
+    const outDir = path.join(tmp, 'out_' + fileCount)
+    await fs.mkdir(outDir, { recursive: true })
+    try {
+      if (tool === 'unzip') await execFileP('unzip', ['-o', archivePath, '-d', outDir])
+      else if (tool === 'unrar') await execFileP('unrar', ['x', '-o+', archivePath, outDir + '/'])
+      else if (tool === '7z') await execFileP('7z', ['x', archivePath, `-o${outDir}`, '-y'])
+    } catch (e) {
+      // maybe tool missing
+    }
+    // read extracted text files
+    async function walk(d) {
+      const entries = await fs.readdir(d, { withFileTypes: true }).catch(() => [])
+      for (const e of entries) {
+        const full = path.join(d, e.name)
+        if (e.isDirectory()) await walk(full)
+        else {
+          try {
+            const content = await fs.readFile(full, 'utf8')
+            combined += `\\n===== ${e.name} =====\\n${content.slice(0, 5000)}`
+            fileCount++
+          } catch {}
+        }
+      }
+    }
+    await walk(outDir)
+  }
+  return { text: combined.slice(0, 40000), files: fileCount }
+}
+
+// ---------- Git / repo ----------
+/**
+ * Raíz del repositorio que el agente controla. Orden de prioridad:
+ *  1. Variable de entorno JARVIS_REPO_PATH (p. ej. en autostart.sh o systemd)
+ *  2. Archivo ~/.config/jarvis/repo-path (una línea con la ruta absoluta)
+ *  3. El directorio de trabajo del bridge
+ * Se resuelve en cada llamada, así que cambiar el archivo surte efecto al instante.
+ */
+function repoRootFromConfig() {
+  try {
+    const p = join(homedir(), '.config', 'jarvis', 'repo-path')
+    const v = readFileSync(p, 'utf8').trim()
+    return v || null
+  } catch {
+    return null
+  }
+}
+const REPO_ROOT = () => resolvePath(process.env.JARVIS_REPO_PATH || repoRootFromConfig() || process.cwd())
+
+async function gitCmd(args, opts = {}) {
+  const r = await execFileP('git', ['-C', REPO_ROOT(), ...args], {
+    maxBuffer: 10 * 1024 * 1024,
+    ...opts,
+  })
+  return r.stdout
+}
+
+function insideRepo(p) {
+  const abs = resolvePath(REPO_ROOT(), p)
+  const rel = relative(REPO_ROOT(), abs)
+  return !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+async function repoStatus() {
+  return gitCmd(['status', '--porcelain=v1', '-b'])
+}
+async function repoDiff(path) {
+  const args = ['diff', 'HEAD']
+  if (path) args.push('--', path)
+  return gitCmd(args)
+}
+async function repoLog(limit = 10) {
+  return gitCmd(['log', `-${limit}`, '--oneline', '--decorate'])
+}
+async function repoList(sub = '') {
+  const args = ['ls-files']
+  if (sub && sub.trim()) args.push(sub)
+  const out = await gitCmd(args)
+  return out.split('\n').filter(Boolean)
+}
+async function repoRead(p) {
+  if (!insideRepo(p)) throw new Error('path outside repo')
+  return readFile(resolvePath(REPO_ROOT(), p), 'utf8')
+}
+async function repoWrite(p, content) {
+  if (!insideRepo(p)) throw new Error('path outside repo')
+  const abs = resolvePath(REPO_ROOT(), p)
+  await mkdir(dirname(abs), { recursive: true })
+  await writeFile(abs, content, 'utf8')
+  return { ok: true }
+}
+async function repoCommit(message, addAll = true) {
+  if (addAll) await gitCmd(['add', '-A'])
+  await gitCmd(['commit', '-m', message])
+  return { ok: true }
+}
+async function repoPush() {
+  // -u configura el upstream en el primer push; en los siguientes no hace daño.
+  // HEAD empuja la rama actual sin que haya que saber su nombre.
+  await gitCmd(['push', '-u', 'origin', 'HEAD'])
+  return { ok: true }
+}
+async function repoPull() {
+  await gitCmd(['pull', '--rebase'])
+  return { ok: true }
+}
+async function repoBranch(name) {
+  await gitCmd(['checkout', '-b', name])
+  return { ok: true }
+}
+async function repoShow(target) {
+  return gitCmd(['show', target])
+}
+
+// ---------- Telegram (entrada: puerta de chatbot) ----------
+/**
+ * El bot de Telegram del señor es la puerta remota para hablar con el agente.
+ * Token: env TELEGRAM_BOT_TOKEN → ~/.config/jarvis/telegram-token.
+ *
+ * Este proceso hace long-poll de getUpdates y encola los mensajes entrantes;
+ * el navegador los recoge en GET /telegram/pending, piensa la respuesta con
+ * Gemini + todas las herramientas (memoria, calendario, repo, bóveda...) y la
+ * devuelve con POST /telegram/send. El offset se persiste en disco para que
+ * un reinicio no reprocese mensajes viejos.
+ */
+function telegramTokenFromFile() {
+  try {
+    const v = readFileSync(join(homedir(), '.config', 'jarvis', 'telegram-token'), 'utf8').trim()
+    return v || null
+  } catch {
+    return null
+  }
+}
+const TG_TOKEN = () => process.env.TELEGRAM_BOT_TOKEN || telegramTokenFromFile()
+
+const TG_OFFSET_FILE = join(homedir(), '.config', 'jarvis', 'telegram-offset')
+const tgQueue = []
+let tgOffset = null
+let tgLoopStarted = false
+const tgSleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+try {
+  const v = readFileSync(TG_OFFSET_FILE, 'utf8').trim()
+  if (v) tgOffset = Number(v)
+} catch {}
+
+function tgSaveOffset() {
+  mkdir(dirname(TG_OFFSET_FILE), { recursive: true })
+    .then(() => writeFile(TG_OFFSET_FILE, String(tgOffset)))
+    .catch(() => {})
+}
+
+async function telegramLoop() {
+  if (tgLoopStarted) return
+  tgLoopStarted = true
+  for (;;) {
+    const token = TG_TOKEN()
+    if (!token) {
+      await tgSleep(5000)
+      continue
+    }
+    try {
+      // Sin offset conocido: offset=-1 salta el histórico y arranca en "ahora".
+      const q = new URLSearchParams({ timeout: '25' })
+      q.set('offset', tgOffset == null ? '-1' : String(tgOffset))
+      const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?${q}`, {
+        signal: AbortSignal.timeout(30000),
+      })
+      const data = await res.json()
+      if (data.ok && Array.isArray(data.result)) {
+        for (const u of data.result) {
+          const next = u.update_id + 1
+          tgOffset = tgOffset == null ? next : Math.max(tgOffset, next)
+          const m = u.message
+          if (m && typeof m.text === 'string' && m.text) {
+            tgQueue.push({
+              update_id: u.update_id,
+              chat_id: m.chat?.id,
+              chat_first_name: m.chat?.first_name || '',
+              from_username: m.from?.username || '',
+              from_name: [m.from?.first_name, m.from?.last_name].filter(Boolean).join(' '),
+              text: m.text,
+              date: m.date,
+            })
+            if (tgQueue.length > 50) tgQueue.splice(0, tgQueue.length - 50)
+            // Recordar el último chat que escribió: los avisos y
+            // recordatorios pueden responder ahí sin configuración extra.
+            if (m.chat?.id) {
+              writeFile(join(homedir(), '.config', 'jarvis', 'telegram-chat'), String(m.chat.id)).catch(() => {})
+            }
+            console.info('[telegram] mensaje entrante de', m.from?.username || m.chat?.first_name, ':', m.text)
+          }
+        }
+        if (data.result.length) tgSaveOffset()
+      }
+    } catch {
+      /* red caída o token inválido: reintentar en el siguiente ciclo */
+    }
+    await tgSleep(1000)
+  }
+}
+
+// ---------- Obsidian (bóveda de memoria en Markdown) ----------
+/**
+ * Raíz de la bóveda de Obsidian que Milos usa como memoria visible.
+ * Orden: env JARVIS_OBSIDIAN_VAULT → ~/.config/jarvis/vault-path →
+ * ~/Documentos/Boveda-Milos. Se resuelve por llamada, como el repo.
+ */
+function vaultRootFromConfig() {
+  try {
+    const p = join(homedir(), '.config', 'jarvis', 'vault-path')
+    const v = readFileSync(p, 'utf8').trim()
+    return v || null
+  } catch {
+    return null
+  }
+}
+const VAULT_ROOT = () =>
+  resolvePath(
+    process.env.JARVIS_OBSIDIAN_VAULT ||
+      vaultRootFromConfig() ||
+      join(homedir(), 'Documentos', 'Boveda-Milos'),
+  )
+
+function insideVault(p) {
+  const abs = resolvePath(VAULT_ROOT(), p)
+  const rel = relative(VAULT_ROOT(), abs)
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+/** Nombre de archivo seguro a partir de un título o clave. */
+function vaultSlug(s, maxlen = 60) {
+  const slug = String(s)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/[\s-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxlen)
+  return slug || 'nota'
+}
+
+/** Camina la bóveda y devuelve todos los .md relativos a la raíz. */
+async function vaultFiles(sub = '') {
+  const root = VAULT_ROOT()
+  const base = sub ? resolvePath(root, sub) : root
+  const out = []
+  async function walk(dir, prefix) {
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (e.name === '.obsidian' || e.name.startsWith('.')) continue
+      const rel = prefix ? `${prefix}/${e.name}` : e.name
+      if (e.isDirectory()) await walk(join(dir, e.name), rel)
+      else if (e.name.endsWith('.md')) out.push(rel)
+    }
+  }
+  await walk(base, sub)
+  return out.sort()
+}
+
+async function vaultRead(p) {
+  if (!insideVault(p)) throw new Error('path outside vault')
+  return readFile(resolvePath(VAULT_ROOT(), p), 'utf8')
+}
+
+async function vaultWrite(p, content) {
+  if (!insideVault(p)) throw new Error('path outside vault')
+  const abs = resolvePath(VAULT_ROOT(), p)
+  await mkdir(dirname(abs), { recursive: true })
+  await writeFile(abs, content, 'utf8')
+  return { ok: true, path: p }
+}
+
+async function vaultAppend(p, content) {
+  if (!insideVault(p)) throw new Error('path outside vault')
+  const abs = resolvePath(VAULT_ROOT(), p)
+  let prev = ''
+  try {
+    prev = await readFile(abs, 'utf8')
+  } catch {
+    /* nueva nota */
+  }
+  const sep = prev.endsWith('\n') || prev === '' ? '' : '\n'
+  await vaultWrite(p, prev + sep + content)
+  return { ok: true, path: p }
+}
+
+async function vaultDelete(p) {
+  if (!insideVault(p)) throw new Error('path outside vault')
+  const abs = resolvePath(VAULT_ROOT(), p)
+  await unlink(abs)
+  return { ok: true }
+}
+
+/** Búsqueda de texto completo por la bóveda, con puntuación simple. */
+async function vaultSearch(q, max = 15) {
+  const terms = String(q)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 2)
+  if (terms.length === 0) return []
+  const files = await vaultFiles('')
+  const results = []
+  for (const f of files) {
+    let text = ''
+    try {
+      text = await vaultRead(f)
+    } catch {
+      continue
+    }
+    const low = (f + '\n' + text).toLowerCase()
+    let score = 0
+    for (const t of terms) {
+      const parts = low.split(t).length - 1
+      score += parts
+      if (f.toLowerCase().includes(t)) score += 3
+    }
+    if (score > 0) {
+      const idx = low.indexOf(terms[0])
+      const snippet = text
+        .slice(Math.max(0, idx - 60), idx + 160)
+        .replace(/\s+/g, ' ')
+        .trim()
+      results.push({ path: f, score, snippet })
+    }
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, max)
+}
+
 const handleRequest = async (req, res) => {
   const origin = req.headers.origin
   if (origin && !originAllowed(origin)) {
@@ -961,6 +1471,320 @@ const handleRequest = async (req, res) => {
     }
   }
 
+  // ---------- URL proxy (CORS bypass) ----------
+  if (req.method === 'GET' && req.url?.startsWith('/fetch?')) {
+    const asked = new URL(req.url, 'http://x').searchParams.get('url') ?? ''
+    try {
+      const r = await fetch(asked)
+      const text = await r.text()
+      res.writeHead(200, { ...cors, 'content-type': 'text/plain; charset=utf-8' })
+      return res.end(text)
+    } catch (err) {
+      res.writeHead(502, cors)
+      return res.end(String(err?.message ?? err))
+    }
+  }
+
+  // ---------- Telegram send ----------
+  if (req.method === 'POST' && req.url === '/telegram/send') {
+    try {
+      const body = await readJson(req)
+      const token = TG_TOKEN()
+      let chatId = body.chatId || process.env.TELEGRAM_CHAT_ID || ''
+      if (!chatId) {
+        // último chat que escribió al bot (persistido por el poller)
+        try {
+          chatId = readFileSync(join(homedir(), '.config', 'jarvis', 'telegram-chat'), 'utf8').trim()
+        } catch {}
+      }
+      if (!token || !chatId) {
+        res.writeHead(400, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: false, error: 'TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID no configurados' }))
+      }
+      const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: body.text, parse_mode: 'HTML' }),
+      })
+      const data = await r.json()
+      if (data.ok) console.info('[telegram] respuesta enviada al chat', chatId)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: !!data.ok, error: data.description }))
+    } catch (err) {
+      res.writeHead(500, cors)
+      return res.end(String(err?.message ?? err))
+    }
+  }
+
+  // ---------- Telegram pending (mensajes entrantes del bot) ----------
+  if (req.method === 'GET' && req.url?.startsWith('/telegram/pending')) {
+    const messages = tgQueue.splice(0, tgQueue.length)
+    res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+    return res.end(JSON.stringify({ ok: true, messages }))
+  }
+
+  // ---------- Mail ----------
+  if (req.method === 'GET' && req.url?.startsWith('/mail/list')) {
+    try {
+      const limit = Number(new URL(req.url, 'http://x').searchParams.get('limit') ?? 20)
+      const msgs = await listMail(limit)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ messages: msgs }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ messages: [], error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/mail/read')) {
+    try {
+      const id = new URL(req.url, 'http://x').searchParams.get('id') ?? ''
+      const msg = await readMail(id)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(msg))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/mail/send') {
+    try {
+      const body = await readJson(req)
+      const r = await sendMail(body.to, body.subject, body.body)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+
+  // ---------- File search ----------
+  if (req.method === 'GET' && req.url?.startsWith('/files/search')) {
+    try {
+      const u = new URL(req.url, 'http://x')
+      const q = u.searchParams.get('q') ?? ''
+      const root = u.searchParams.get('root') || process.env.HOME || '/'
+      const max = Number(u.searchParams.get('max') ?? 50)
+      const hits = await searchFiles(root, q, max)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ hits }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ hits: [], error: String(err?.message ?? err) }))
+    }
+  }
+
+  // ---------- Extract archive (zip/rar/7z) ----------
+  if (req.method === 'POST' && req.url === '/extract') {
+    try {
+      const { files: uploaded } = await readMultipart(req)
+      const result = await extractArchive(uploaded)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(result))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ text: '', files: 0, error: String(err?.message ?? err) }))
+    }
+  }
+
+  // ---------- Repo / git ----------
+  if (req.method === 'GET' && req.url?.startsWith('/repo/root')) {
+    res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+    return res.end(JSON.stringify({ root: REPO_ROOT(), configured: Boolean(process.env.JARVIS_REPO_PATH || repoRootFromConfig()) }))
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/repo/status')) {
+    try {
+      const out = await repoStatus()
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ status: out }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/repo/diff')) {
+    try {
+      const path = new URL(req.url, 'http://x').searchParams.get('path') || ''
+      const out = await repoDiff(path)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ diff: out }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/repo/log')) {
+    try {
+      const limit = Number(new URL(req.url, 'http://x').searchParams.get('limit') ?? 10)
+      const out = await repoLog(limit)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ log: out }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/repo/list')) {
+    try {
+      const sub = new URL(req.url, 'http://x').searchParams.get('path') || ''
+      const out = await repoList(sub)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ files: out }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/repo/read')) {
+    try {
+      const p = new URL(req.url, 'http://x').searchParams.get('path') ?? ''
+      const out = await repoRead(p)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ content: out }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/repo/show')) {
+    try {
+      const target = new URL(req.url, 'http://x').searchParams.get('target') ?? 'HEAD'
+      const out = await repoShow(target)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ show: out }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/repo/write') {
+    try {
+      const body = await readJson(req)
+      const r = await repoWrite(body.path, body.content ?? '')
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/repo/commit') {
+    try {
+      const body = await readJson(req)
+      const r = await repoCommit(body.message, body.addAll !== false)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/repo/push') {
+    try {
+      const r = await repoPush()
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/repo/pull') {
+    try {
+      const r = await repoPull()
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/repo/branch') {
+    try {
+      const body = await readJson(req)
+      const r = await repoBranch(body.name)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+
+  // ---------- Obsidian ----------
+  if (req.method === 'GET' && req.url?.startsWith('/obsidian/root')) {
+    res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+    return res.end(
+      JSON.stringify({ root: VAULT_ROOT(), configured: Boolean(process.env.JARVIS_OBSIDIAN_VAULT || vaultRootFromConfig()) }),
+    )
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/obsidian/list')) {
+    try {
+      const sub = new URL(req.url, 'http://x').searchParams.get('path') || ''
+      const files = await vaultFiles(sub)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ files }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/obsidian/read')) {
+    try {
+      const p = new URL(req.url, 'http://x').searchParams.get('path') ?? ''
+      const content = await vaultRead(p)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ content }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/obsidian/search')) {
+    try {
+      const q = new URL(req.url, 'http://x').searchParams.get('q') ?? ''
+      const results = await vaultSearch(q)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ results }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/obsidian/write') {
+    try {
+      const body = await readJson(req)
+      const r = await vaultWrite(body.path, body.content ?? '')
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/obsidian/append') {
+    try {
+      const body = await readJson(req)
+      const r = await vaultAppend(body.path, body.content ?? '')
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+  if (req.method === 'POST' && req.url === '/obsidian/delete') {
+    try {
+      const body = await readJson(req)
+      const r = await vaultDelete(body.path)
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(r))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+
   res.writeHead(404, cors)
   res.end()
 }
@@ -999,6 +1823,43 @@ const wss = new WebSocketServer({
   },
 })
 server.listen(PORT)
+telegramLoop()
+
+// ---------- Autonomía del bridge (independencia) ----------
+// Polling de correo: si hay correo nuevo, avisa por Telegram.
+async function mailPoll() {
+  try {
+    const host = process.env.MAIL_IMAP_HOST
+    const user = process.env.MAIL_USER
+    const pass = process.env.MAIL_PASS
+    if (!host || !user || !pass) return
+    const token = TG_TOKEN()
+    let chatId = process.env.TELEGRAM_CHAT_ID
+    if (!chatId) {
+      try {
+        chatId = readFileSync(join(homedir(), '.config', 'jarvis', 'telegram-chat'), 'utf8').trim()
+      } catch {}
+    }
+    if (!token || !chatId) return
+    const msgs = await listMail(5)
+    // Simple: si hay mensajes, notificar los asuntos (una vez por arranque-ish; aquí cada ciclo)
+    if (msgs.length > 0) {
+      const text = `📬 ${msgs.length} correo(s) reciente(s):\\n` + msgs.slice(0, 5).map((m) => `• ${m.subject} — ${m.from}`).join('\\n')
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      })
+    }
+  } catch (e) {
+    console.error('[jarvis] mail poll error:', e?.message ?? e)
+  }
+}
+// Ejecutar cada 10 minutos si está configurado
+if (process.env.MAIL_IMAP_HOST && process.env.TELEGRAM_BOT_TOKEN) {
+  setInterval(mailPoll, 10 * 60 * 1000)
+  console.log('[jarvis] autonomía: polling de correo activo (cada 10 min).')
+}
 
 console.log(`[jarvis] bridge listening on ws://localhost:${PORT}`)
 console.log(
@@ -1317,6 +2178,12 @@ wss.on('connection', (socket) => {
             for (const block of msg.content ?? msg.message?.content ?? []) {
               if (block.type === 'tool_use') {
                 announceTool(block.id, block.name)
+              } else if (block.type === 'text' && block.text) {
+                let txt = block.text
+                if (txt.includes('Not logged in') || txt.includes('login') || txt.includes('Failed to authenticate')) {
+                  txt = 'Señor, no se ha detectado inicio de sesión en Claude ni una clave API válida. Por favor configure su clave ANTHROPIC_API_KEY o inicie sesión para activar mis sistemas.'
+                }
+                sendTurn({ type: 'text', delta: txt })
               }
             }
             break
@@ -1342,7 +2209,7 @@ wss.on('connection', (socket) => {
             // empty text is indistinguishable from a turn that simply had
             // nothing to say — the HUD stops spinning and JARVIS stands there
             // silent. Say what happened instead.
-            if (msg.subtype === 'success') {
+            if (msg.subtype === 'success' && !msg.is_error) {
               sendTurn({
                 type: 'done',
                 text: msg.result ?? '',
@@ -1351,11 +2218,22 @@ wss.on('connection', (socket) => {
             } else {
               console.error(
                 `[jarvis] turn failed: ${msg.subtype}`,
-                msg.errors ?? '',
+                msg.errors ?? msg.result ?? '',
               )
+              let errMsg = msg.result || (RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default)
+              if (
+                typeof errMsg === 'string' &&
+                (errMsg.includes('Not logged in') ||
+                  errMsg.includes('login') ||
+                  errMsg.includes('Failed to authenticate') ||
+                  errMsg.includes('403'))
+              ) {
+                errMsg =
+                  'Señor, no se ha detectado inicio de sesión en Claude ni una clave API válida. Por favor configure su clave ANTHROPIC_API_KEY o inicie sesión para activar mis sistemas.'
+              }
               sendTurn({
                 type: 'error',
-                message: RESULT_FAILURES[msg.subtype] ?? RESULT_FAILURES.default,
+                message: errMsg,
               })
             }
             // Whatever was waiting on this turn to finish can go now. This is

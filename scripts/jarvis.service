@@ -1,0 +1,15 @@
+[Unit]
+Description=JARVIS personal assistant (bridge + face)
+After=graphical-session.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/admin1/Documentos/jarvis
+Environment=PORT=5180
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

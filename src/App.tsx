@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Scene } from './scene/Scene'
 import { Hud } from './ui/Hud'
+import { PersonalAssistant } from './ui/PersonalAssistant'
+import { Background } from './ui/Background'
 import { Boot } from './ui/Boot'
 import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
@@ -123,7 +125,7 @@ export default function App() {
 
   // -- one turn -------------------------------------------------------------
 
-  const respond = async (said: string): Promise<void> => {
+  const respond = async (said: string, via?: 'telegram'): Promise<void> => {
     const mine = ++turn.current
     const stale = () => mine !== turn.current
 
@@ -184,6 +186,23 @@ export default function App() {
 
       if (stale()) return
 
+      // Puerta de Telegram: el turno llegó desde el chat remoto del señor,
+      // así que la respuesta también se devuelve allí además de hablarse.
+      if (via === 'telegram' && text) {
+        const tg = await import('./lib/telegram')
+        void tg.send(text)
+      }
+
+      // If nothing was streamed (e.g. non-streamed response or direct result), display and speak it
+      if (!started && text) {
+        started = true
+        store.getState().setPhase('speaking')
+        store.getState().setActiveTool(null)
+        music.working(false)
+        store.getState().pushTurn({ id: turnId, role: 'jarvis', text })
+        spk.say(text)
+      }
+
       // The bridge keeps conversation state in its own session, so history is
       // only threaded through on the direct path.
       if (!usingBridge) {
@@ -201,9 +220,21 @@ export default function App() {
       if (stale()) return
       console.error(err)
       sfx.play('error')
-      store
-        .getState()
-        .setError(err instanceof Error ? err.message : 'Something went wrong.')
+      const rawError = err instanceof Error ? err.message : 'Something went wrong.'
+      let userFriendlyError = rawError
+      if (
+        rawError.includes('Not logged in') ||
+        rawError.includes('login') ||
+        rawError.includes('Failed to authenticate') ||
+        rawError.includes('403')
+      ) {
+        userFriendlyError =
+          'Señor, no se ha detectado inicio de sesión en Claude ni una clave API válida. Por favor configure su clave ANTHROPIC_API_KEY o inicie sesión para activar mis sistemas.'
+      }
+      store.getState().setError(userFriendlyError)
+      store.getState().pushTurn({ id: newId(), role: 'jarvis', text: userFriendlyError })
+      spk.say(userFriendlyError)
+      await spk.end()
     } finally {
       if (!stale()) {
         speaker.current = null
@@ -525,6 +556,23 @@ export default function App() {
     })
 
     store.getState().setPhase('dormant')
+
+    // Automatically activate camera and gestures 100%
+    void hands
+      .enableHands()
+      .then(() => {
+        store.getState().setGestures(true)
+        store.getState().pushBlade({
+          id: 'camera-live',
+          kind: 'camera',
+          title: 'CÁMARA Y VISIÓN EN VIVO',
+          size: 'compact',
+          hold: 'sticky',
+        })
+      })
+      .catch((err) => {
+        console.warn('Auto camera/hands start warning:', err)
+      })
   }
 
   // -- clap to start --------------------------------------------------------
@@ -559,6 +607,22 @@ export default function App() {
   }, [phase])
 
   // -- level pump + keys ----------------------------------------------------
+
+  useEffect(() => {
+    // Recordatorios de calendario -> Telegram
+    const iv = setInterval(async () => {
+      try {
+        const cal = await import('./lib/calendar')
+        const due = await cal.dueReminders()
+        for (const e of due) {
+          const tg = await import('./lib/telegram')
+          await tg.send(`⏰ Recordatorio: ${e.title}${e.description ? ' — ' + e.description : ''}`)
+          await cal.markNotified(e.id)
+        }
+      } catch {}
+    }, 60000)
+    return () => clearInterval(iv)
+  }, [])
 
   useEffect(() => {
     let raf = 0
@@ -682,9 +746,103 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
 
+    const onManualSend = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail
+      if (text) {
+        const phase = store.getState().phase
+        if (phase === 'offline') {
+          void powerOn().then(() => {
+            void respond(text)
+          })
+        } else {
+          void respond(text)
+        }
+      }
+    }
+
+    const onManualWake = () => {
+      const phase = store.getState().phase
+      if (phase === 'offline') {
+        void powerOn()
+      } else if (phase === 'thinking' || phase === 'tooling' || phase === 'speaking') {
+        onSpeechStart()
+        listen(AWAIT_SPEECH_MS)
+      } else {
+        onWake('')
+      }
+    }
+
+    const onToggleCamera = () => {
+      const on = store.getState().gestures
+      if (on) {
+        hands.disableHands()
+        store.getState().setGestures(false)
+      } else {
+        store.getState().setError(null)
+        void hands
+          .enableHands()
+          .then(() => {
+            store.getState().setGestures(true)
+            const hasCamBlade = store.getState().blades.some((b) => b.kind === 'camera')
+            if (!hasCamBlade) {
+              store.getState().pushBlade({
+                id: 'camera-live',
+                kind: 'camera',
+                title: 'CÁMARA Y VISIÓN EN VIVO',
+                size: 'compact',
+                hold: 'sticky',
+              })
+            }
+          })
+          .catch((err: Error) => {
+            store.getState().setGestures(false)
+            store
+              .getState()
+              .setError(
+                err?.name === 'NotAllowedError'
+                  ? 'Permiso de cámara denegado.'
+                  : `Error al iniciar cámara: ${err?.message ?? err}`,
+              )
+          })
+      }
+    }
+
+    window.addEventListener('jarvis:send', onManualSend)
+    window.addEventListener('jarvis:wake', onManualWake)
+    window.addEventListener('jarvis:toggle-camera', onToggleCamera)
+
+    // Telegram: la puerta remota del agente. El bridge encola los mensajes
+    // que llegan al bot; cada pocos segundos se recogen y pasan por el mismo
+    // conducto que la voz y el teclado, con toda la maquinaria disponible
+    // (memoria, calendario, bóveda, repo...). La respuesta vuelve al chat.
+    const tgPoll = setInterval(async () => {
+      try {
+        const tg = await import('./lib/telegram')
+        const msgs = await tg.pending()
+        for (const m of msgs) {
+          // Recordar a qué chat hay que responder.
+          tg.setConfig({ chatId: String(m.chat_id) })
+          const who = m.from_name || m.chat_first_name || 'señor'
+          const said = `[Telegram · ${who}] ${m.text}`
+          const phase = store.getState().phase
+          if (phase === 'offline') {
+            void powerOn().then(() => {
+              void respond(said, 'telegram')
+            })
+          } else {
+            void respond(said, 'telegram')
+          }
+        }
+      } catch {}
+    }, 4000)
+
     return () => {
       cancelAnimationFrame(raf)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('jarvis:send', onManualSend)
+      window.removeEventListener('jarvis:wake', onManualWake)
+      window.removeEventListener('jarvis:toggle-camera', onToggleCamera)
+      clearInterval(tgPoll)
       clearIdle()
       if (voicePoll.current) clearInterval(voicePoll.current)
       voice.current?.stop()
@@ -697,8 +855,10 @@ export default function App() {
 
   return (
     <>
+      <Background />
       <Scene />
       <Hud />
+      <PersonalAssistant />
       <Boot />
       <Diagnostics />
       <Ignition onStart={() => void powerOn()} />

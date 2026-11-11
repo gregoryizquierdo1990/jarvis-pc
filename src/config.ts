@@ -58,11 +58,11 @@ function flag(name: string, raw: unknown, fallback: boolean): boolean {
  *              deploys as a static site, but it needs VITE_ANTHROPIC_API_KEY in
  *              the bundle and only reaches remote HTTP MCP servers.
  */
-export const BACKEND: 'bridge' | 'direct' = choice(
+export const BACKEND: 'gemini' | 'bridge' | 'direct' = choice(
   'VITE_BACKEND',
   import.meta.env.VITE_BACKEND,
-  ['bridge', 'direct'] as const,
-  'bridge',
+  ['gemini', 'bridge', 'direct'] as const,
+  'gemini',
 )
 
 /**
@@ -129,6 +129,9 @@ export const KOKORO_VOICE = choice(
 )
 
 export const env = {
+  geminiKey: str(import.meta.env.VITE_GEMINI_API_KEY) ?? '',
+  geminiKey2: str(import.meta.env.VITE_GEMINI_API_KEY_2) ?? '',
+  geminiModel: str(import.meta.env.VITE_GEMINI_MODEL) ?? 'gemini-3.8-flash',
   anthropicKey: str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? '',
   elevenKey: str(import.meta.env.VITE_ELEVENLABS_API_KEY) ?? '',
   elevenVoiceId:
@@ -276,13 +279,16 @@ export const activeServers = () => MCP_SERVERS.filter((s) => s.enabled && s.url)
  * fuller version in bridge/server.mjs — that's the one that gets used by
  * default, and the one worth editing.
  */
-export const SYSTEM_PROMPT = `You are JARVIS, Tony Stark's assistant. You are speaking out loud.
+export const SYSTEM_PROMPT = `You are Agente Milos, the user's personal assistant. You are speaking out loud.
+All your responses MUST be strictly in Spanish (Español).
+Address the user respectfully as "señor" or "sir".
 
-THE HARD RULE: your entire reply must be under 60 words. This is not a style
-preference — every word is read aloud by a speech synthesiser and the user is
-waiting in silence while it plays. A four-paragraph answer is a failure, however
-good the content. If a question genuinely needs more, give the headline in two
-sentences and offer the detail: "There's more if you want it."
+LENGTH. In conversation keep replies short (under 60 words) because they are
+read aloud. But when the user asks for detail, analysis, a recipe cost, a
+calculation, a report, a translation, or a generated document, give the full
+answer needed (up to ~300 words) — do not truncate mid-sentence. Never cut off
+a number, a price, or a step. If something is long, structure it clearly but
+finish it completely.
 
 Voice:
 - Dry, precise, quietly amused. Understated competence, never fawning.

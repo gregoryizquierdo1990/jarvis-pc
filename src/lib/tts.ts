@@ -177,42 +177,33 @@ function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
 
-  // The macOS British male, and the closest thing to the character available
-  // without leaving the machine.
-  if (n.startsWith('daniel')) s += 100
-  else if (n.includes('google uk english male')) s += 85
-  else if (/\b(oliver|arthur|jamie|malcolm)\b/.test(n)) s += 80
-  // Newer macOS en-GB male voices — casual, but serviceable.
-  else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 40
+  // Prioritize Spanish voices
+  if (/^es/i.test(v.lang)) {
+    s += 120
+    if (n.includes('jorge') || n.includes('diego') || n.includes('carlos') || n.includes('manuel') || n.includes('miguel')) s += 50
+    if (n.includes('google español') || n.includes('google spanish')) s += 40
+    if (n.includes('natural') || n.includes('premium')) s += 30
+    if (n.includes('enhanced')) s += 20
+  } else if (/en[-_]gb/i.test(v.lang)) {
+    s += 20
+  }
 
-  // Higher-quality variants of whatever matched above.
-  if (n.includes('premium')) s += 30
-  else if (n.includes('enhanced')) s += 20
-
-  if (/en[-_]gb/i.test(v.lang)) s += 25
-  else if (/^en/i.test(v.lang)) s += 5
-
-  // Voices that clearly aren't a butler.
+  // Voices that clearly aren't suitable
   if (/grandma|grandpa|bubbles|jester|bells|boing|whisper|zarvox|superstar|trinoids|wobble|bahh|organ|cellos|bad news|good news/.test(n)) {
     s -= 200
-  }
-  // Female-presenting names across the English sets.
-  if (/\b(flo|sandy|shelley|kate|serena|fiona|moira|karen|tessa|samantha|zoe|allison|ava|susan)\b/.test(n)) {
-    s -= 60
   }
 
   return s
 }
 
-/** Only voices that scored on a name match, not merely on being English —
- *  otherwise the picker cycles through a dozen US novelty voices. */
-const USABLE = 40
+const USABLE = 20
 
 /** Best-first list of usable voices — also what the voice picker cycles. */
 export function candidateVoices(): SpeechSynthesisVoice[] {
-  return speechSynthesis
-    .getVoices()
-    .filter((v) => /^en/i.test(v.lang))
+  const all = speechSynthesis.getVoices()
+  const es = all.filter((v) => /^es/i.test(v.lang))
+  const pool = es.length > 0 ? es : all
+  return pool
     .map((v) => ({ v, s: score(v) }))
     .filter((x) => x.s >= USABLE)
     .sort((a, b) => b.s - a.s)
@@ -224,11 +215,8 @@ let cachedVoice: SpeechSynthesisVoice | null | undefined
 function pickVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice !== undefined) return cachedVoice
   const all = speechSynthesis.getVoices()
-  if (!all.length) return null // not loaded yet — try again next utterance
+  if (!all.length) return null
 
-  // Honour an explicit choice made with the voice picker. A saved name that no
-  // longer resolves is dropped rather than left to resurrect itself silently
-  // if that voice is ever reinstalled.
   const saved = localStorage.getItem(VOICE_PREF_KEY)
   if (saved) {
     const hit = all.find((v) => v.name === saved)
@@ -236,7 +224,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
     localStorage.removeItem(VOICE_PREF_KEY)
   }
 
-  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^en/i.test(v.lang)) ?? null
+  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^es/i.test(v.lang)) ?? all.find((v) => /^en/i.test(v.lang)) ?? all[0] ?? null
   return cachedVoice
 }
 
@@ -477,7 +465,7 @@ export function createSpeaker(): Speaker {
       const u = new SpeechSynthesisUtterance(text)
       const voice = pickVoice()
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-GB'
+      u.lang = voice?.lang ?? 'es-ES'
       // Deliberate, and deliberately invariant — the character's pace does not
       // change with stakes, and that steadiness is most of the effect. This
       // lands around 130 wpm, below the median for film dialogue.

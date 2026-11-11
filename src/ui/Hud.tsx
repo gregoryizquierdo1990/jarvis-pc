@@ -5,17 +5,16 @@ import { Suggestions } from './Suggestions'
 import { BladeSweep, Blades } from './Blades'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
-import { GestureGuide } from './GestureGuide'
 
 const statusText: Record<Phase, string> = {
-  offline: 'OFFLINE',
-  boot: 'INITIALISING',
-  dormant: 'STANDBY — SAY “HEY JARVIS”',
-  waking: 'ONLINE',
-  listening: 'LISTENING',
-  thinking: 'PROCESSING',
-  tooling: 'ACCESSING SYSTEMS',
-  speaking: 'RESPONDING',
+  offline: 'DESCONECTADO',
+  boot: 'INICIALIZANDO',
+  dormant: 'EN ESPERA — DI “HEY MILOS” O ESCRIBE ABAJO',
+  waking: 'EN LÍNEA',
+  listening: 'ESCUCHANDO',
+  thinking: 'PROCESANDO',
+  tooling: 'ACCEDIENDO A SISTEMAS',
+  speaking: 'RESPONDIENDO',
 }
 
 function Corner({ at }: { at: 'tl' | 'tr' | 'bl' | 'br' }) {
@@ -310,13 +309,75 @@ export function Hud() {
 
       {error && <div className="error">{error}</div>}
 
+      {/* Barra de control manual y entrada de texto */}
+      {phase !== 'offline' && phase !== 'boot' && (
+        <div className="manual-control-bar">
+          <button
+            type="button"
+            className="hud-btn-wake"
+            onClick={() => window.dispatchEvent(new CustomEvent('jarvis:wake'))}
+            title="Activar Jarvis manualmente sin micrófono"
+          >
+            <span className="wake-pulse-dot" />
+            HEY MILOS
+          </button>
+
+          <button
+            type="button"
+            className="hud-btn-wake"
+            onClick={() => window.dispatchEvent(new CustomEvent('jarvis:toggle-pa'))}
+            title="Abrir panel del asistente personal"
+          >
+            🧠 ASISTENTE
+          </button>
+
+          <button
+            type="button"
+            className={`hud-btn-wake ${gestures ? 'camera-active' : ''}`}
+            onClick={() => window.dispatchEvent(new CustomEvent('jarvis:toggle-camera'))}
+            title="Activar o pausar la cámara y el reconocimiento de gestos"
+            style={{
+              borderColor: gestures ? 'rgba(0, 240, 255, 0.8)' : 'rgba(255, 255, 255, 0.2)',
+              color: gestures ? '#00f0ff' : 'rgba(255, 255, 255, 0.6)',
+            }}
+          >
+            📷 {gestures ? 'CÁMARA & GESTOS: ACTIVO' : 'ACTIVAR CÁMARA'}
+          </button>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const form = e.currentTarget
+              const input = form.elements.namedItem('command') as HTMLInputElement
+              const val = input?.value?.trim()
+              if (val) {
+                window.dispatchEvent(new CustomEvent('jarvis:send', { detail: val }))
+                input.value = ''
+              }
+            }}
+            className="manual-input-form"
+          >
+            <input
+              name="command"
+              type="text"
+              placeholder="Escribe una orden o pregunta a Jarvis con Gemini... (Presiona Enter)"
+              className="manual-input-field"
+              autoComplete="off"
+            />
+            <button type="submit" className="hud-btn-send">
+              ENVIAR
+            </button>
+          </form>
+        </div>
+      )}
+
       <footer className="hud-bottom">
         <span className="hint">
-          say <b>“hey jarvis”</b> · <kbd>Space</kbd> to talk · <kbd>G</kbd> hands
+          di <b>“hey milos”</b> · <kbd>Espacio</kbd> o escribir arriba · <kbd>G</kbd> cámara & gestos
           {voice && (
             <>
               {' · '}
-              <kbd>V</kbd> voice: {voice.replace(/\(.*?\)/g, '').trim()}
+              <kbd>V</kbd> voz: {voice.replace(/\(.*?\)/g, '').trim()}
             </>
           )}
         </span>
@@ -332,10 +393,9 @@ export function Hud() {
       <Pointer />
       {(gestures || looking) && (
         <div className="hands-live">
-          {looking ? `LOOKING — ${looking.toUpperCase()}` : 'CAMERA ON · G TO STOP'}
+          {looking ? `ANALIZANDO — ${looking.toUpperCase()}` : 'CÁMARA Y GESTOS ACTIVOS · TECLA G PARA PAUSAR'}
         </div>
       )}
-      <GestureGuide live={gestures} />
     </div>
   )
 }

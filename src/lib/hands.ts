@@ -45,8 +45,7 @@ const WASM_BASE = '/mediapipe'
  * than `script-src`, and nothing in it executes. The browser caches it after
  * first use, exactly as the neural voice model is handled.
  */
-const MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+const MODEL_URL = '/mediapipe/hand_landmarker.task'
 
 /* ------------------------------------------------------------------ anatomy */
 

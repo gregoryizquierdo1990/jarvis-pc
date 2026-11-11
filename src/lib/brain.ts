@@ -1,34 +1,26 @@
 import { BACKEND } from '../config'
 import * as direct from './anthropic'
 import * as bridge from './bridge'
+import * as gemini from './gemini'
 import type { AskHandlers, Msg } from './anthropic'
 import type { Blade, Panel } from '../store'
 
 export type { AskHandlers, Msg }
 export type { ConnectionState } from './bridge'
 
-/**
- * Picks the brain. Both backends answer a question and stream text and tool
- * events back; they differ in where they run and what they can reach.
- *
- *   bridge — a local Node process running the Claude Agent SDK. Uses your
- *            existing Claude Code login, so no API key, and every MCP server
- *            you have configured is available, including local stdio ones.
- *
- *   direct — the browser calls the Claude API itself. No process to run and it
- *            deploys as a static site, but it needs an API key in the bundle
- *            and can only use remote HTTP MCP servers.
- */
-
+export const usingGemini = BACKEND === 'gemini'
 export const usingBridge = BACKEND === 'bridge'
 
 /** Conversation state lives in the bridge session, so history is only threaded
- *  through on the direct path. */
+ *  through on the direct and gemini paths. */
 export async function ask(
   prompt: string,
   history: Msg[],
   handlers: AskHandlers,
 ): Promise<{ text: string; tools: string[] }> {
+  if (usingGemini) {
+    return gemini.ask([...history, { role: 'user', content: prompt } as any], handlers)
+  }
   return usingBridge
     ? bridge.ask(prompt, handlers)
     : direct.ask([...history, { role: 'user', content: prompt }], handlers)
@@ -91,7 +83,8 @@ export function watchCapture(
  * path by aborting the stream so the model stops generating and billing.
  */
 export function cancel(): void {
-  if (usingBridge) bridge.cancel()
+  if (usingGemini) gemini.cancel()
+  else if (usingBridge) bridge.cancel()
   else direct.cancel()
 }
 
@@ -127,5 +120,6 @@ export function watchConnection(
 
 /** Labels for the HUD's SYSTEMS rail. */
 export function connectedLabels(): string[] {
+  if (usingGemini) return gemini.connectedLabels()
   return usingBridge ? bridge.bridgeServers() : direct.connectedLabels()
 }
