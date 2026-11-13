@@ -25,6 +25,7 @@ import * as db from './database'
 import * as pb from './pocketbase'
 import * as macrodroid from './macrodroid'
 import * as net from './network'
+import * as moneyprinter from './moneyprinter'
 
 export type AskHandlers = {
   onText: (delta: string) => void
@@ -880,6 +881,52 @@ const toolDeclarations = [
     description: 'Escanea la red local para listar todos los dispositivos, IPs y direcciones MAC conectados actualmente al router.',
     parameters: { type: 'object', properties: {} },
   },
+  {
+    name: 'moneyprinter_create_video',
+    description:
+      'Genera un video automático de alta calidad (TikTok, Reels, Shorts en 9:16 o YouTube en 16:9) usando MoneyPrinterTurbo con guion, clips de video sincronizados, voz neural en español y subtítulos animados.',
+    parameters: {
+      type: 'object',
+      properties: {
+        video_subject: { type: 'string', description: 'Tema o título del video (ej. "3 Secretos del Éxito", "Cómo empezar a emprender")' },
+        video_script: { type: 'string', description: 'Guion completo estructurado (gancho, desarrollo, remate) redactado por Milos o el usuario' },
+        video_terms: { type: 'string', description: 'Palabras clave separadas por comas para buscar clips visuales (ej. "dinero, negocio, oficina, éxito")' },
+        video_aspect: { type: 'string', enum: ['9:16', '16:9', '1:1'], description: 'Formato de pantalla: "9:16" para Shorts/TikTok/Reels, "16:9" para YouTube' },
+        voice_name: { type: 'string', description: 'Voz neural TTS (default: "es-ES-AlvaroNeural", o "es-MX-DaliaNeural", "es-ES-ElviraNeural")' },
+        bgm_type: { type: 'string', enum: ['random', 'none'], description: 'Música de fondo: "random" o "none"' },
+        video_clip_duration: { type: 'number', description: 'Duración en segundos de cada clip de video (default: 3)' },
+      },
+      required: ['video_subject'],
+    },
+  },
+  {
+    name: 'moneyprinter_check_status',
+    description: 'Consulta el estado, porcentaje de progreso y enlace de descarga del video generado en MoneyPrinterTurbo.',
+    parameters: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'ID de la tarea retornado al crear el video' },
+      },
+      required: ['taskId'],
+    },
+  },
+  {
+    name: 'moneyprinter_health',
+    description: 'Comprueba si la instancia de MoneyPrinterTurbo está activa y lista para renderizar videos.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'moneyprinter_configure',
+    description: 'Configura la URL y clave API opcional de MoneyPrinterTurbo.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL de MoneyPrinterTurbo (ej. http://localhost:8080)' },
+        apiKey: { type: 'string', description: 'Clave API opcional si está protegida' },
+      },
+      required: ['url'],
+    },
+  },
 ]
 
 export const toolDeclarationsMap: Record<string, any> = {}
@@ -1055,7 +1102,7 @@ async function executeTool(name: string, args: any): Promise<any> {
     case 'search_skills':
       return { skills: skills.searchSkills(args.query) }
     case 'load_skill': {
-      let s = skills.getSkill(args.name)
+      let s: skills.Skill | null | undefined = skills.getSkill(args.name)
       if (!s && args.remoteRepoPath) {
         s = await skills.fetchRemoteSkill(args.remoteRepoPath)
       }
@@ -1160,6 +1207,16 @@ async function executeTool(name: string, args: any): Promise<any> {
       return net.measureSpeed()
     case 'network_scan_devices':
       return net.scanDevices()
+    case 'moneyprinter_create_video':
+      return moneyprinter.createVideoTask(args)
+    case 'moneyprinter_check_status':
+      return moneyprinter.checkTaskStatus(args.taskId)
+    case 'moneyprinter_health':
+      return moneyprinter.checkMoneyPrinterHealth()
+    case 'moneyprinter_configure': {
+      moneyprinter.setMoneyPrinterConfig(args.url, args.apiKey)
+      return { ok: true, message: `MoneyPrinterTurbo configurado en ${args.url}` }
+    }
     default:
       return { error: 'Herramienta desconocida: ' + name }
   }
@@ -1261,6 +1318,14 @@ Usa macrodroid_trigger para enviar notificaciones sonoras y alertas críticas di
   const networkInfo = `\n\nDIAGNÓSTICO Y CONTROL DE RED WI-FI Y CABLEADA:
 Usa network_check_internet, network_speedtest y network_scan_devices para comprobar salida a internet, medir velocidad de descarga/subida y escanear qué dispositivos están conectados al router. Si la red falla, avisa por Telegram y MacroDroid.`
 
+  const moneyprinterInfo = `\n\nPRODUCCIÓN AUTOMATIZADA DE VIDEOS (MONEYPRINTERTURBO):
+Tienes integrada la suite MoneyPrinterTurbo (repositorio harry0703/MoneyPrinterTurbo) para crear de forma autónoma videos en formatos verticales (9:16 para TikTok, Reels, YouTube Shorts) o apaisados (16:9 para YouTube).
+Cuando el operador te pida un video o contenido audiovisual:
+1. Diseña un guion persuasivo con un gancho potente en los primeros 3 segundos, desarrollo dinámico y llamada a la acción.
+2. Identifica términos clave visuales relevantes (video_terms) para que el motor busque clips de video acordes al tema.
+3. Lanza moneyprinter_create_video configurando aspecto (9:16 o 16:9), voz neural en español (ej. es-ES-AlvaroNeural o es-MX-DaliaNeural), subtítulos animados y música de fondo.
+4. Monitorea el progreso con moneyprinter_check_status y entrega el link directo de previsualización o descarga.`
+
   const fullSystemPrompt = `${activeBot.systemPrompt || SYSTEM_PROMPT}
 
 MODO ACTUAL: ${activeBot.name} (${activeBot.role})
@@ -1277,6 +1342,7 @@ ${dbInfo}
 ${pbInfo}
 ${macrodroidInfo}
 ${networkInfo}
+${moneyprinterInfo}
 ${mcpInfo}
 ${n8nInfo}
 ${skillsInfo}

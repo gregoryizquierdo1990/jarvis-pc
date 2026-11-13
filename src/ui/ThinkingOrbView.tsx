@@ -1,4 +1,4 @@
-import React, { Component, type ReactNode } from 'react'
+import { Component, type ReactNode } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
 import { useStore, type Phase } from '../store'
 

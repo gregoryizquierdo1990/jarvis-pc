@@ -1,0 +1,18 @@
+{
+  "name": "Agente Milos",
+  "short_name": "Milos",
+  "description": "Asistente inteligente con control de PC, automatizaciones y subagentes",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#01060c",
+  "theme_color": "#00d2ff",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

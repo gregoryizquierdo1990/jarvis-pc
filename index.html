@@ -48,21 +48,26 @@
     <meta
       http-equiv="Content-Security-Policy"
       content="
-        default-src 'self';
+        default-src 'self' capacitor: http: https:;
         base-uri 'self';
         object-src 'none';
-        frame-src https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com http://localhost:8787 http://127.0.0.1:8787;
-        img-src 'self' data: blob: http://localhost:8787 http://127.0.0.1:8787;
+        frame-src https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com http: https:;
+        img-src 'self' data: blob: http: https: capacitor:;
         script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
         font-src 'self' data: https://fonts.gstatic.com;
-        connect-src 'self' data: blob: https: ws: wss: http://localhost:8787 http://127.0.0.1:8787;
+        connect-src 'self' data: blob: https: http: ws: wss: capacitor:;
         worker-src 'self' blob:;
-        media-src 'self' data: blob: http://localhost:8787 http://127.0.0.1:8787;
+        media-src 'self' data: blob: http: https: capacitor:;
       "
     />
 
-    <title>J.A.R.V.I.S.</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Agente Milos" />
+
+    <title>Agente Milos</title>
   </head>
   <body>
     <div id="root"></div>
