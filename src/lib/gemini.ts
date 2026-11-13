@@ -976,6 +976,7 @@ const toolDeclarations = [
         precio: { type: 'string', description: 'Precio visible a destacar (ej. "$8.50")' },
         subtitulo: { type: 'string', description: 'Subtítulo o descripción breve (ej. "Películas, Series y Deportes en VIVO")' },
         formato: { type: 'string', enum: ['status', 'post'], description: '"status" (9:16 vertical para Estados) o "post" (1:1 cuadrado para Grupos)' },
+        tema: { type: 'string', enum: ['cyberpunk', 'crimson', 'emerald', 'royal', 'dark_gold'], description: 'Paleta visual del banner (default: "cyberpunk")' },
         pagos: { type: 'string', description: 'Texto de métodos de pago (ej. "Pago Móvil 🇻🇪 · Binance USDT 🟡 · Zinli 💳 · Efectivo")' },
       },
       required: ['titulo', 'precio'],
@@ -1303,8 +1304,9 @@ async function executeTool(name: string, args: any): Promise<any> {
       const pr = (args.precio || '$0.00').replace(/"/g, '\\"')
       const sub = (args.subtitulo || 'Entrega Inmediata · 100% Garantizado').replace(/"/g, '\\"')
       const form = args.formato || 'status'
+      const tem = args.tema || 'cyberpunk'
       const pag = (args.pagos || 'Pago Móvil 🇻🇪 · Binance USDT 🟡 · Zinli 💳 · Efectivo').replace(/"/g, '\\"')
-      const cmd = `python3 scripts/generate_ad_banner.py -t "${tit}" -p "${pr}" -s "${sub}" -f "${form}" -m "${pag}"`
+      const cmd = `python3 scripts/generate_ad_banner.py -t "${tit}" -p "${pr}" -s "${sub}" -f "${form}" -e "${tem}" -m "${pag}"`
       return pc.execCommand(cmd)
     }
     default:

@@ -41,12 +41,51 @@ def draw_gradient_background(width, height, top_color, bottom_color):
         draw.line([(0, y), (width, y)], fill=(r, g, b, 255))
     return base
 
+THEMES = {
+    "cyberpunk": {
+        "bg_top": (10, 15, 30),
+        "bg_bottom": (3, 5, 12),
+        "accent": (0, 225, 255),    # Cyan neón
+        "secondary": (255, 204, 0), # Oro brillante
+        "card_bg": (20, 28, 50, 220),
+    },
+    "crimson": {
+        "bg_top": (35, 8, 12),
+        "bg_bottom": (12, 2, 4),
+        "accent": (255, 45, 85),    # Rojo neón
+        "secondary": (255, 215, 0), # Oro brillante
+        "card_bg": (50, 15, 22, 220),
+    },
+    "emerald": {
+        "bg_top": (6, 30, 20),
+        "bg_bottom": (2, 12, 8),
+        "accent": (0, 230, 118),    # Verde esmeralda neón
+        "secondary": (255, 215, 0), # Oro brillante
+        "card_bg": (12, 45, 30, 220),
+    },
+    "royal": {
+        "bg_top": (25, 10, 40),
+        "bg_bottom": (10, 3, 18),
+        "accent": (213, 0, 249),    # Magenta eléctrico
+        "secondary": (0, 229, 255), # Cyan neón
+        "card_bg": (40, 18, 60, 220),
+    },
+    "dark_gold": {
+        "bg_top": (22, 20, 15),
+        "bg_bottom": (8, 7, 5),
+        "accent": (255, 215, 0),    # Oro puro
+        "secondary": (255, 255, 255),# Blanco nítido
+        "card_bg": (35, 32, 24, 220),
+    },
+}
+
 def create_ad_banner(
     titulo="MAX PLATINO + VIX",
     precio="$8.50",
     subtitulo="Películas, Series y Deportes en VIVO",
     formato="status",
     pagos="Pago Móvil · Binance USDT · Zinli · Efectivo",
+    tema="cyberpunk",
     salida=None,
     categoria="streaming"
 ):
@@ -56,30 +95,32 @@ def create_ad_banner(
     else:
         width, height = 1080, 1080 # 1:1 Cuadrado para Grupos / Posts
 
-    # Paleta de colores estilo Milos (Dark Cyberpunk / Neon Cyan & Gold)
-    bg_top = (10, 15, 30)      # Azul muy oscuro
-    bg_bottom = (3, 5, 12)     # Casi negro
-    cyan_neon = (0, 225, 255)  # Cyan neón
-    gold_accent = (255, 204, 0)# Oro brillante
+    # Paleta de colores seleccionada
+    palette = THEMES.get(tema, THEMES["cyberpunk"])
+    bg_top = palette["bg_top"]
+    bg_bottom = palette["bg_bottom"]
+    accent_color = palette["accent"]
+    gold_accent = palette["secondary"]
     white = (255, 255, 255)
-    gray_light = (200, 210, 230)
-    card_bg = (20, 28, 50, 220)
+    gray_light = (210, 220, 235)
+    card_bg = palette["card_bg"]
 
     # Crear fondo degradado
     img = draw_gradient_background(width, height, bg_top, bg_bottom)
     draw = ImageDraw.Draw(img, "RGBA")
 
     # Marco o resplandor de acento superior
-    draw.rectangle([(0, 0), (width, 16)], fill=cyan_neon)
+    draw.rectangle([(0, 0), (width, 16)], fill=accent_color)
     draw.rectangle([(0, height - 16), (width, height)], fill=gold_accent)
 
     # 1. Cinta Superior (Badge de Oferta)
     badge_font = get_font(32, bold=True)
     badge_text = "⚡ OFERTA ESPECIAL · ENTREGA INMEDIATA ⚡"
-    draw.rounded_rectangle([(140, 70), (width - 140, 140)], radius=35, fill=(0, 225, 255, 40), outline=cyan_neon, width=3)
+    accent_badge_bg = (accent_color[0], accent_color[1], accent_color[2], 40)
+    draw.rounded_rectangle([(140, 70), (width - 140, 140)], radius=35, fill=accent_badge_bg, outline=accent_color, width=3)
     bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(((width - tw) // 2, 85), badge_text, font=badge_font, fill=cyan_neon)
+    draw.text(((width - tw) // 2, 85), badge_text, font=badge_font, fill=accent_color)
 
     # 2. Título Principal
     title_font = get_font(72, bold=True)
@@ -136,7 +177,7 @@ def create_ad_banner(
     garantia_text = "✓ 100% GARANTIZADO · PANTALLAS ULTRA HD · SIN CAÍDAS"
     gbox = draw.textbbox((0, 0), garantia_text, font=garantia_font)
     gw = gbox[2] - gbox[0]
-    draw.text(((width - gw) // 2, card_top + card_h - 70), garantia_text, font=garantia_font, fill=cyan_neon)
+    draw.text(((width - gw) // 2, card_top + card_h - 70), garantia_text, font=garantia_font, fill=accent_color)
 
     # 5. Lista de Beneficios
     y_benefits = card_top + card_h + 60
@@ -160,7 +201,7 @@ def create_ad_banner(
     draw.text(((width - ptw) // 2, y_pay), pt_text, font=pay_title_font, fill=gray_light)
 
     pay_badge_font = get_font(30, bold=True)
-    draw.rounded_rectangle([(80, y_pay + 40), (width - 80, y_pay + 115)], radius=20, fill=(15, 25, 45), outline=cyan_neon, width=2)
+    draw.rounded_rectangle([(80, y_pay + 40), (width - 80, y_pay + 115)], radius=20, fill=(15, 25, 45), outline=accent_color, width=2)
     pbbox = draw.textbbox((0, 0), pagos, font=pay_badge_font)
     pbw = pbbox[2] - pbbox[0]
     draw.text(((width - pbw) // 2, y_pay + 58), pagos, font=pay_badge_font, fill=white)
@@ -178,7 +219,7 @@ def create_ad_banner(
     if not salida:
         out_dir = Path(__file__).resolve().parent.parent / "banners_generados"
         out_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"banner_{titulo.lower().replace(' ', '_').replace('+', '_')}_{formato}.png"
+        filename = f"banner_{titulo.lower().replace(' ', '_').replace('+', '_')}_{tema}_{formato}.png"
         salida = str(out_dir / filename)
     else:
         Path(salida).parent.mkdir(parents=True, exist_ok=True)
@@ -192,17 +233,19 @@ def main():
     parser.add_argument("--precio", "-p", default="$8.50", help="Precio visible de la promoción")
     parser.add_argument("--subtitulo", "-s", default="Películas, Series y Deportes en VIVO", help="Subtítulo o descripción")
     parser.add_argument("--formato", "-f", default="status", choices=["status", "post"], help="'status' (9:16 WhatsApp) o 'post' (1:1 Cuadrado)")
+    parser.add_argument("--tema", "-e", default="cyberpunk", choices=["cyberpunk", "crimson", "emerald", "royal", "dark_gold"], help="Tema de color")
     parser.add_argument("--pagos", "-m", default="Pago Móvil 🇻🇪 · Binance USDT 🟡 · Zinli 💳 · Efectivo", help="Métodos de pago a listar")
     parser.add_argument("--salida", "-o", default=None, help="Ruta del archivo de salida PNG")
 
     args = parser.parse_args()
 
-    print(f"\n🎨 Diseñando banner publicitario para: '{args.titulo}' ({args.precio})...")
+    print(f"\n🎨 Diseñando banner publicitario ({args.tema}) para: '{args.titulo}' ({args.precio})...")
     path = create_ad_banner(
         titulo=args.titulo,
         precio=args.precio,
         subtitulo=args.subtitulo,
         formato=args.formato,
+        tema=args.tema,
         pagos=args.pagos,
         salida=args.salida
     )
