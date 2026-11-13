@@ -44,9 +44,10 @@ case $opcion in
         ;;
     2)
         TARGET_DIR="$HOME/Documentos/MoneyPrinterTurbo"
-        if [ ! -d "$TARGET_DIR" ]; then
-            echo "📥 Clonando repositorio en $TARGET_DIR..."
-            git clone https://github.com/harry0703/MoneyPrinterTurbo.git "$TARGET_DIR"
+        if [ ! -d "$TARGET_DIR/.git" ]; then
+            echo "📥 Clonando repositorio ligero (--depth 1) en $TARGET_DIR..."
+            rm -rf "$TARGET_DIR"
+            git clone --depth 1 https://github.com/harry0703/MoneyPrinterTurbo.git "$TARGET_DIR"
         fi
         cd "$TARGET_DIR"
         echo "📦 Instalando dependencias Python..."
