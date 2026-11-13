@@ -9,18 +9,18 @@ echo "=========================================="
 echo "🤖 Compilador de APK - Agente Milos Android"
 echo "=========================================="
 
-# 1. Comprobar Java / JDK
+# 1. Comprobar Java / JDK (o instalar OpenJDK 17 en ~/.local/jdk-17 sin necesidad de sudo)
+if [ -d "$HOME/.local/jdk-17/bin" ] && [ -x "$HOME/.local/jdk-17/bin/javac" ]; then
+    export JAVA_HOME="$HOME/.local/jdk-17"
+    export PATH="$JAVA_HOME/bin:$PATH"
+fi
+
 if ! command -v javac &> /dev/null; then
-    echo "⚠️ Java Development Kit (JDK) no encontrado."
-    echo "Para compilar el APK en Linux, se requiere OpenJDK 17."
-    echo "Instalando openjdk-17-jdk (se solicitará contraseña sudo si es necesario)..."
-    if command -v apt-get &> /dev/null; then
-        sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
-    else
-        echo "❌ No se pudo instalar automáticamente. Por favor instale OpenJDK 17 o abra el proyecto en Android Studio:"
-        echo "   npx cap open android"
-        exit 1
-    fi
+    echo "⚠️ Java Development Kit no encontrado. Descargando e instalando OpenJDK 17 en ~/.local/jdk-17..."
+    mkdir -p "$HOME/.local/jdk-17"
+    curl -sL "https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse" | tar -xz -C "$HOME/.local/jdk-17" --strip-components=1
+    export JAVA_HOME="$HOME/.local/jdk-17"
+    export PATH="$JAVA_HOME/bin:$PATH"
 fi
 
 echo "✅ Java instalado: $(javac -version 2>&1)"

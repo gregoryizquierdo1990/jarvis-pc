@@ -7,13 +7,23 @@ echo "🎬 Configuración e Inicio de MoneyPrinterTurbo"
 echo "   Repositorio: https://github.com/harry0703/MoneyPrinterTurbo"
 echo "=========================================================="
 
-echo "Seleccione cómo desea ejecutar MoneyPrinterTurbo:"
-echo "1) Vía Docker (Recomendado: descarga y levanta la imagen oficial en 1 paso)"
-echo "2) Clonar repositorio con Git e instalar dependencias con Python"
-echo "3) Salir"
-echo ""
-
-read -p "Opción [1-3]: " opcion
+opcion="${1:-}"
+if [ -z "$opcion" ]; then
+    if [ -t 0 ]; then
+        echo "Seleccione cómo desea ejecutar MoneyPrinterTurbo:"
+        echo "1) Vía Docker (descarga y levanta la imagen oficial)"
+        echo "2) Clonar repositorio con Git e instalar dependencias con Python (Automático si no hay Docker)"
+        echo "3) Salir"
+        echo ""
+        read -p "Opción [1-3]: " opcion
+    else
+        if command -v docker &> /dev/null; then
+            opcion="1"
+        else
+            opcion="2"
+        fi
+    fi
+fi
 
 case $opcion in
     1)
@@ -40,9 +50,10 @@ case $opcion in
         fi
         cd "$TARGET_DIR"
         echo "📦 Instalando dependencias Python..."
-        pip install -r requirements.txt
-        echo "🚀 Iniciando MoneyPrinterTurbo..."
-        python main.py
+        pip3 install -r requirements.txt
+        echo "🚀 Iniciando MoneyPrinterTurbo en segundo plano..."
+        nohup python3 main.py > moneyprinter.log 2>&1 &
+        echo "✓ MoneyPrinterTurbo iniciado en segundo plano. Logs en: $TARGET_DIR/moneyprinter.log"
         ;;
     3)
         echo "Operación cancelada."
