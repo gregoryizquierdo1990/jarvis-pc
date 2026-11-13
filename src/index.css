@@ -1034,6 +1034,20 @@ kbd {
   transform: translateY(-2vh);
 }
 
+.central-orb-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  transform: translateY(-2vh);
+}
+
+.central-orb-layer > * {
+  pointer-events: auto;
+}
+
 .instruments svg {
   /* Tied to the smaller axis so the assembly stays circular and never crops. */
   width: min(82vmin, 820px);

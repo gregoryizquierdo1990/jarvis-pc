@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=JARVIS
-Comment=Asistente personal JARVIS
-Exec=/home/admin1/Documentos/jarvis/scripts/autostart.sh
+Name=Agente Milos
+Comment=Asistente personal Agente Milos
+Exec=/home/admin1/Documentos/openmilos/scripts/autostart.sh
 Terminal=false
 X-GNOME-Autostart-enabled=true

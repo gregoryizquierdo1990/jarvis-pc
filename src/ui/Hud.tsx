@@ -5,11 +5,12 @@ import { Suggestions } from './Suggestions'
 import { BladeSweep, Blades } from './Blades'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
+import { ThinkingOrbView } from './ThinkingOrbView'
 
 const statusText: Record<Phase, string> = {
   offline: 'DESCONECTADO',
   boot: 'INICIALIZANDO',
-  dormant: 'EN ESPERA — DI “HEY MILOS” O ESCRIBE ABAJO',
+  dormant: 'EN ESPERA — DI “MILOS” O ESCRIBE ABAJO',
   waking: 'EN LÍNEA',
   listening: 'ESCUCHANDO',
   thinking: 'PROCESANDO',
@@ -189,22 +190,26 @@ export function Hud() {
       <header className="hud-top">
         {ui.chrome.brand && (
           <div className="brand">
-            <span className="brand-mark">J.A.R.V.I.S.</span>
-            <span className="brand-sub">Just A Rather Very Intelligent System</span>
+            <span className="brand-mark">M.I.L.O.S.</span>
+            <span className="brand-sub">Asistente Personal Autónomo</span>
           </div>
         )}
 
         <div className="status">
           <span className="dot" />
           <span className="status-text">
-            {/* bootNote is the voice-model download readout. It is only ever
-                the right thing to show during boot — as a general fallback a
-                note that never got cleared (a stuck 'voice 97%') sits over
-                LISTENING and PROCESSING for the rest of the session. */}
+            {/* bootNote is the voice-model download readout. */}
             {phase === 'boot' && bootNote ? bootNote : statusText[phase]}
           </span>
         </div>
       </header>
+
+      {/* Orbe de pensamiento interactivo centrado en el reactor principal */}
+      {phase !== 'offline' && (
+        <div className="central-orb-layer">
+          <ThinkingOrbView size={300} onClick={() => window.dispatchEvent(new CustomEvent('jarvis:wake'))} />
+        </div>
+      )}
 
       {/* Left rail: which integrations are live */}
       {ui.chrome.systems && (
@@ -360,7 +365,7 @@ export function Hud() {
             <input
               name="command"
               type="text"
-              placeholder="Escribe una orden o pregunta a Jarvis con Gemini... (Presiona Enter)"
+              placeholder="Escribe una orden o pregunta a Milos... (Presiona Enter)"
               className="manual-input-field"
               autoComplete="off"
             />
@@ -373,7 +378,7 @@ export function Hud() {
 
       <footer className="hud-bottom">
         <span className="hint">
-          di <b>“hey milos”</b> · <kbd>Espacio</kbd> o escribir arriba · <kbd>G</kbd> cámara & gestos
+          di <b>“milos”</b> · <kbd>Espacio</kbd> o escribir arriba · <kbd>G</kbd> cámara & gestos
           {voice && (
             <>
               {' · '}

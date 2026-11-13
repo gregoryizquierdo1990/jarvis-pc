@@ -14,6 +14,17 @@ import * as units from './units'
 import * as repo from './repo'
 import * as obsidian from './obsidian'
 import * as api from './geminiApi'
+import * as n8n from './n8n'
+import * as skills from './skillsCatalog'
+import * as chatbots from './chatbots'
+import * as subagents from './subagents'
+import * as mcp from './mcp'
+import * as agency from './agencyAgents'
+import * as pc from './pcControl'
+import * as db from './database'
+import * as pb from './pocketbase'
+import * as macrodroid from './macrodroid'
+import * as net from './network'
 
 export type AskHandlers = {
   onText: (delta: string) => void
@@ -36,7 +47,25 @@ export function cancel(): void {
 }
 
 export function connectedLabels(): string[] {
-  return ['Google Gemini', 'Memoria', 'Calendario', 'Archivos', 'Correo', 'Telegram', 'Visión']
+  return [
+    'Google Gemini',
+    'Memoria',
+    'Calendario',
+    'Archivos',
+    'Correo',
+    'Telegram',
+    'Visión',
+    'N8N',
+    'Subagentes',
+    'Skills',
+    'MCP',
+    'Agency Agents',
+    'PC Nativo',
+    'Supabase/Postgres',
+    'PocketBase',
+    'MacroDroid',
+    'Diagnóstico Red',
+  ]
 }
 
 // ---------- Tool definitions (Gemini function calling) ----------
@@ -477,7 +506,386 @@ const toolDeclarations = [
     description: 'Añade un bloque con hora a la nota diaria de la bitácora de Milos.',
     parameters: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] },
   },
+  {
+    name: 'spawn_subagent',
+    description:
+      'Crea y delega una tarea compleja a un subagente especializado autónomo bajo el control de Milos. El subagente opera con su propio cargo, tarea, limitaciones, prompt especializado y herramientas permitidas, y devuelve el informe final.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre del subagente (ej. "Investigador", "Contador", "Analista-Git")' },
+        role: { type: 'string', description: 'Cargo o función del subagente (ej. "Especialista en Investigación y Datos")' },
+        task: { type: 'string', description: 'La tarea detallada que debe resolver el subagente' },
+        limitations: { type: 'string', description: 'Limitaciones, directrices de alcance o restricciones éticas' },
+        systemPrompt: { type: 'string', description: 'Instrucciones y personalidad especializada para el subagente' },
+        toolsAllowed: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Herramientas permitidas (ej. ["calculate", "search_files", "read_file", "ingest_url", "obsidian_search"]) o ["all"]',
+        },
+      },
+      required: ['name', 'role', 'task'],
+    },
+  },
+  {
+    name: 'n8n_test_connection',
+    description: 'Verifica la conexión con la instancia local o remota de n8n para automatizaciones.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'n8n_trigger_webhook',
+    description: 'Dispara un flujo de automatización en n8n a través de su webhook.',
+    parameters: {
+      type: 'object',
+      properties: {
+        webhookPathOrUrl: {
+          type: 'string',
+          description: 'Ruta o URL completa del webhook de n8n (ej. "orden-compra" o "http://localhost:5678/webhook/...")',
+        },
+        payload: { type: 'object', description: 'Datos JSON que se enviarán al flujo de n8n' },
+      },
+      required: ['webhookPathOrUrl'],
+    },
+  },
+  {
+    name: 'n8n_list_workflows',
+    description: 'Lista los flujos de trabajo existentes en n8n (requiere API Key configurada).',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'n8n_configure',
+    description: 'Configura la URL de n8n y su API Key cuando el usuario las proporcione en la conversación.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL de n8n (ej. http://localhost:5678)' },
+        apiKey: { type: 'string', description: 'Clave API de n8n' },
+      },
+      required: ['url', 'apiKey'],
+    },
+  },
+  {
+    name: 'search_skills',
+    description: 'Busca habilidades disponibles en el catálogo basado en el estándar anthropics/skills.',
+    parameters: {
+      type: 'object',
+      properties: { query: { type: 'string', description: 'Término de búsqueda de la habilidad' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'load_skill',
+    description: 'Carga una habilidad especializada local o remota de anthropics/skills para que Milos incorpore sus instrucciones de dominio.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre de la habilidad (ej. "deep-research", "business-financial-audit", "git-repo-architect", "n8n-workflow-designer")' },
+        remoteRepoPath: { type: 'string', description: 'Opcional: ruta relativa en anthropics/skills para descargar' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'list_chatbots',
+    description: 'Lista los chatbots y perfiles de personalidad configurados por el usuario.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'switch_chatbot',
+    description: 'Cambia la personalidad o modo activo de Milos a otro chatbot configurado (ej. "milos-dev", "milos-business", "milos-automation", "milos-core").',
+    parameters: {
+      type: 'object',
+      properties: { profileId: { type: 'string', description: 'ID del perfil de chatbot' } },
+      required: ['profileId'],
+    },
+  },
+  {
+    name: 'mcp_list_servers',
+    description: 'Lista los servidores MCP (Model Context Protocol) configurados para conectar Milos con aplicaciones externas (Notion, GitHub, Linear, Home Assistant, Zapier, Sistema Local).',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'mcp_list_tools',
+    description: 'Lista todas las herramientas y capacidades disponibles en los servidores MCP conectados actualmente.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'mcp_call_tool',
+    description: 'Ejecuta una herramienta en un servidor MCP conectado pasándole sus argumentos (ej. crear tarea en Notion, gestionar tickets en Linear, automatizar con Zapier, etc.).',
+    parameters: {
+      type: 'object',
+      properties: {
+        server: { type: 'string', description: 'ID o nombre del servidor MCP (ej. "mcp-local-bridge", "Notion", "Linear", "Zapier")' },
+        tool: { type: 'string', description: 'Nombre de la herramienta MCP a invocar' },
+        arguments: { type: 'object', description: 'Argumentos o parámetros para la herramienta' },
+      },
+      required: ['server', 'tool'],
+    },
+  },
+  {
+    name: 'mcp_add_server',
+    description: 'Registra un nuevo servidor MCP en la configuración de Milos para conectar una herramienta de uso diario.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Nombre legible del servidor MCP' },
+        url: { type: 'string', description: 'URL o endpoint HTTP/SSE del servidor MCP' },
+        bearerToken: { type: 'string', description: 'Token o API key de autorización opcional' },
+        description: { type: 'string', description: 'Descripción de las herramientas que provee' },
+      },
+      required: ['name', 'url'],
+    },
+  },
+  {
+    name: 'mcp_test_server',
+    description: 'Prueba la conexión con un servidor MCP específico y actualiza las herramientas que ofrece.',
+    parameters: {
+      type: 'object',
+      properties: {
+        serverId: { type: 'string', description: 'ID del servidor MCP a probar (ej. "mcp-local-bridge")' },
+      },
+      required: ['serverId'],
+    },
+  },
+  {
+    name: 'agency_search_agents',
+    description: 'Busca agentes y subagentes especializados en el repositorio msitarzewski/agency-agents por rol, habilidad o categoría (engineering, finance, marketing, security, etc.).',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Término de búsqueda o rol deseado (ej. "backend", "seguridad", "marketing", "qa")' },
+        category: { type: 'string', description: 'Categoría opcional (ej. "engineering", "finance", "design", "security")' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'agency_get_agent',
+    description: 'Obtiene el perfil completo, personalidad y directrices de un agente de msitarzewski/agency-agents.',
+    parameters: {
+      type: 'object',
+      properties: {
+        agentIdOrName: { type: 'string', description: 'ID o nombre del agente (ej. "backend-architect", "financial-analyst")' },
+      },
+      required: ['agentIdOrName'],
+    },
+  },
+  {
+    name: 'agency_spawn_agent',
+    description: 'Lanza y ejecuta autónomamente un subagente utilizando la personalidad, directrices y habilidades exactas de msitarzewski/agency-agents.',
+    parameters: {
+      type: 'object',
+      properties: {
+        agentIdOrName: { type: 'string', description: 'ID o nombre del agente a invocar' },
+        task: { type: 'string', description: 'La tarea detallada que debe resolver el subagente' },
+        customLimitations: { type: 'string', description: 'Limitaciones adicionales o directrices de entrega' },
+      },
+      required: ['agentIdOrName', 'task'],
+    },
+  },
+  {
+    name: 'system_run_command',
+    description: 'Ejecuta un comando nativo en la PC (bash en Linux) para ejecutar programas, compilar, automatizar tareas o consultar el estado del equipo.',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'Comando bash a ejecutar' },
+        cwd: { type: 'string', description: 'Directorio de trabajo opcional' },
+      },
+      required: ['command'],
+    },
+  },
+  {
+    name: 'system_open_app',
+    description: 'Abre cualquier aplicación instalada (Chrome, VSCode, LibreOffice, Calculadora, Terminal, etc.) o archivo/documento (PDF, DOCX, etc.) en la PC.',
+    parameters: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'Nombre de la aplicación o ruta absoluta al archivo/documento (ej. "google-chrome", "code", "calc", "/home/...")' },
+      },
+      required: ['target'],
+    },
+  },
+  {
+    name: 'system_close_app',
+    description: 'Cierra una aplicación o proceso en ejecución en la PC por su nombre (ej. "chrome", "spotify", "vlc").',
+    parameters: {
+      type: 'object',
+      properties: {
+        target: { type: 'string', description: 'Nombre del proceso o aplicación a cerrar' },
+      },
+      required: ['target'],
+    },
+  },
+  {
+    name: 'system_file_manager',
+    description: 'Operaciones directas sobre el sistema de archivos de la PC: leer documentos, crear/editar archivos, mover, copiar, eliminar o listar directorios.',
+    parameters: {
+      type: 'object',
+      properties: {
+        op: { type: 'string', enum: ['read', 'write', 'move', 'copy', 'delete', 'list'], description: 'Operación de archivos' },
+        path: { type: 'string', description: 'Ruta del archivo o carpeta' },
+        dest: { type: 'string', description: 'Ruta de destino (para move o copy)' },
+        content: { type: 'string', description: 'Contenido a escribir (para write)' },
+      },
+      required: ['op', 'path'],
+    },
+  },
+  {
+    name: 'system_power_control',
+    description: 'Apaga la PC, reinicia el equipo o cierra la sesión de usuario.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['shutdown', 'reboot', 'logout'], description: 'Acción de energía a realizar' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'db_query_table',
+    description: 'Consulta tablas dinámicas en Supabase/PostgreSQL (ej. inventarios, stock de cuentas streaming, pedidos, clientes).',
+    parameters: {
+      type: 'object',
+      properties: {
+        tableName: { type: 'string', description: 'Nombre de la tabla (ej. "inventario", "cuentas_streaming", "pedidos")' },
+        select: { type: 'string', description: 'Columnas a seleccionar (default: "*")' },
+        limit: { type: 'number', description: 'Límite de registros' },
+        filters: { type: 'object', description: 'Filtros clave-valor (ej. {"servicio": "eq.Netflix", "estado": "eq.disponible"})' },
+      },
+      required: ['tableName'],
+    },
+  },
+  {
+    name: 'db_insert_record',
+    description: 'Inserta un nuevo registro en una tabla de Supabase/PostgreSQL.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tableName: { type: 'string', description: 'Nombre de la tabla' },
+        record: { type: 'object', description: 'Objeto JSON con los datos del registro a insertar' },
+      },
+      required: ['tableName', 'record'],
+    },
+  },
+  {
+    name: 'db_update_record',
+    description: 'Actualiza registros en una tabla de Supabase/PostgreSQL usando una columna de filtro.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tableName: { type: 'string', description: 'Nombre de la tabla' },
+        filterColumn: { type: 'string', description: 'Columna para identificar el registro (ej. "id", "email")' },
+        filterValue: { type: 'string', description: 'Valor del filtro' },
+        patch: { type: 'object', description: 'Campos a actualizar' },
+      },
+      required: ['tableName', 'filterColumn', 'filterValue', 'patch'],
+    },
+  },
+  {
+    name: 'db_configure',
+    description: 'Configura la URL de Supabase y su API Key cuando el operador las proporcione.',
+    parameters: {
+      type: 'object',
+      properties: {
+        supabaseUrl: { type: 'string', description: 'URL del proyecto Supabase (ej. https://xyz.supabase.co)' },
+        supabaseKey: { type: 'string', description: 'API Key pública o de servicio' },
+      },
+      required: ['supabaseUrl', 'supabaseKey'],
+    },
+  },
+  {
+    name: 'pb_check',
+    description: 'Verifica si la base de datos local embebida PocketBase está activa y en línea.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'pb_list_records',
+    description: 'Consulta registros de una colección en PocketBase (ej. stock local de streaming, clientes, transacciones).',
+    parameters: {
+      type: 'object',
+      properties: {
+        collection: { type: 'string', description: 'Nombre de la colección en PocketBase' },
+        filter: { type: 'string', description: 'Filtro de consulta opcional' },
+        sort: { type: 'string', description: 'Criterio de ordenación' },
+      },
+      required: ['collection'],
+    },
+  },
+  {
+    name: 'pb_create_record',
+    description: 'Crea un nuevo registro en una colección de PocketBase.',
+    parameters: {
+      type: 'object',
+      properties: {
+        collection: { type: 'string', description: 'Nombre de la colección' },
+        data: { type: 'object', description: 'Datos del registro' },
+      },
+      required: ['collection', 'data'],
+    },
+  },
+  {
+    name: 'pb_update_record',
+    description: 'Actualiza un registro por su ID en PocketBase.',
+    parameters: {
+      type: 'object',
+      properties: {
+        collection: { type: 'string', description: 'Nombre de la colección' },
+        id: { type: 'string', description: 'ID del registro' },
+        data: { type: 'object', description: 'Datos a actualizar' },
+      },
+      required: ['collection', 'id', 'data'],
+    },
+  },
+  {
+    name: 'macrodroid_trigger',
+    description: 'Envía una alerta sonora, notificación o comando directo al teléfono móvil del usuario mediante MacroDroid.',
+    parameters: {
+      type: 'object',
+      properties: {
+        actionName: { type: 'string', description: 'Nombre de la macro o acción en el teléfono (ej. "alerta_tienda", "alerta_red", "notificar_pago")' },
+        params: { type: 'object', description: 'Parámetros o texto adicional para la notificación' },
+      },
+      required: ['actionName'],
+    },
+  },
+  {
+    name: 'macrodroid_set_device',
+    description: 'Guarda o actualiza el Device ID de MacroDroid del teléfono móvil del operador.',
+    parameters: {
+      type: 'object',
+      properties: {
+        deviceId: { type: 'string', description: 'ID único de dispositivo provisto por la app MacroDroid' },
+      },
+      required: ['deviceId'],
+    },
+  },
+  {
+    name: 'network_check_internet',
+    description: 'Comprueba el estado de la conexión a internet y mide la latencia hacia Google DNS.',
+    parameters: {
+      type: 'object',
+      properties: {
+        host: { type: 'string', description: 'Host o IP de prueba (default: 8.8.8.8)' },
+      },
+    },
+  },
+  {
+    name: 'network_speedtest',
+    description: 'Mide la velocidad real de descarga, subida y ping de la red Wi-Fi o cableada.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'network_scan_devices',
+    description: 'Escanea la red local para listar todos los dispositivos, IPs y direcciones MAC conectados actualmente al router.',
+    parameters: { type: 'object', properties: {} },
+  },
 ]
+
+export const toolDeclarationsMap: Record<string, any> = {}
+for (const td of toolDeclarations) {
+  toolDeclarationsMap[td.name] = td
+}
 
 async function executeTool(name: string, args: any): Promise<any> {
   switch (name) {
@@ -625,6 +1033,133 @@ async function executeTool(name: string, args: any): Promise<any> {
       await obsidian.appendNote(path, `## ${time}\n\n${args.content}\n`)
       return { ok: true, path }
     }
+    case 'spawn_subagent': {
+      const subRes = await subagents.executeSubagent(args, executeTool, toolDeclarationsMap)
+      return {
+        ok: subRes.ok,
+        subagent: subRes.subagent.name,
+        role: subRes.subagent.role,
+        result: subRes.result,
+      }
+    }
+    case 'n8n_test_connection':
+      return n8n.testConnection()
+    case 'n8n_trigger_webhook':
+      return n8n.triggerWebhook(args.webhookPathOrUrl, args.payload || {})
+    case 'n8n_list_workflows':
+      return n8n.listWorkflows()
+    case 'n8n_configure': {
+      n8n.setN8nConfig(args.url, args.apiKey)
+      return { ok: true, message: `n8n configurado exitosamente en ${args.url}` }
+    }
+    case 'search_skills':
+      return { skills: skills.searchSkills(args.query) }
+    case 'load_skill': {
+      let s = skills.getSkill(args.name)
+      if (!s && args.remoteRepoPath) {
+        s = await skills.fetchRemoteSkill(args.remoteRepoPath)
+      }
+      if (!s) return { ok: false, error: `Habilidad "${args.name}" no encontrada.` }
+      return { ok: true, name: s.name, description: s.description, instructions: s.instructions }
+    }
+    case 'list_chatbots':
+      return { profiles: chatbots.getChatbotProfiles(), active: chatbots.getActiveChatbot() }
+    case 'switch_chatbot': {
+      chatbots.setActiveChatbot(args.profileId)
+      const current = chatbots.getActiveChatbot()
+      return { ok: true, activeProfile: current.name, role: current.role }
+    }
+    case 'mcp_list_servers':
+      return { servers: mcp.getMcpServers() }
+    case 'mcp_list_tools':
+      return { tools: mcp.getAllEnabledMcpTools() }
+    case 'mcp_call_tool':
+      return mcp.executeMcpTool(args.server, args.tool, args.arguments || {})
+    case 'mcp_add_server': {
+      const added = mcp.addMcpServer({
+        name: args.name,
+        url: args.url,
+        bearerToken: args.bearerToken,
+        description: args.description,
+        enabled: true,
+        transport: 'http',
+      })
+      return { ok: true, server: added }
+    }
+    case 'mcp_test_server':
+      return mcp.testMcpServer(args.serverId)
+    case 'agency_search_agents':
+      return { agents: agency.searchAgencyAgents(args.query, args.category) }
+    case 'agency_get_agent': {
+      const a = agency.getAgencyAgent(args.agentIdOrName)
+      if (!a) return { error: `Agente "${args.agentIdOrName}" no encontrado en agency-agents.` }
+      return { agent: a }
+    }
+    case 'agency_spawn_agent': {
+      const targetAgent = agency.getAgencyAgent(args.agentIdOrName)
+      if (!targetAgent) {
+        return { error: `Agente "${args.agentIdOrName}" no encontrado en el catálogo de agency-agents.` }
+      }
+      const subRes = await subagents.executeSubagent(
+        {
+          name: targetAgent.name,
+          role: targetAgent.role,
+          task: args.task,
+          limitations: args.customLimitations || 'Cumplir con los estándares y directrices del repositorio agency-agents.',
+          systemPrompt: targetAgent.systemPrompt,
+          toolsAllowed: targetAgent.toolsAllowed,
+        },
+        executeTool,
+        toolDeclarationsMap,
+      )
+      return {
+        ok: subRes.ok,
+        agent: targetAgent.name,
+        role: targetAgent.role,
+        category: targetAgent.category,
+        result: subRes.result,
+      }
+    }
+    case 'system_run_command':
+      return pc.execCommand(args.command, args.cwd)
+    case 'system_open_app':
+      return pc.openAppOrFile(args.target)
+    case 'system_close_app':
+      return pc.closeApp(args.target)
+    case 'system_file_manager':
+      return pc.fileOperation(args.op, args.path, args.dest, args.content)
+    case 'system_power_control':
+      return pc.powerControl(args.action)
+    case 'db_query_table':
+      return db.queryTable(args.tableName, { select: args.select, limit: args.limit, filters: args.filters })
+    case 'db_insert_record':
+      return db.insertRecord(args.tableName, args.record)
+    case 'db_update_record':
+      return db.updateRecord(args.tableName, args.filterColumn, args.filterValue, args.patch)
+    case 'db_configure': {
+      db.setDbConfig(args.supabaseUrl, args.supabaseKey)
+      return { ok: true, message: `Supabase configurado exitosamente en ${args.supabaseUrl}` }
+    }
+    case 'pb_check':
+      return pb.pbCheck()
+    case 'pb_list_records':
+      return pb.pbListRecords(args.collection, { filter: args.filter, sort: args.sort })
+    case 'pb_create_record':
+      return pb.pbCreateRecord(args.collection, args.data)
+    case 'pb_update_record':
+      return pb.pbUpdateRecord(args.collection, args.id, args.data)
+    case 'macrodroid_trigger':
+      return macrodroid.triggerMacroDroid(args.actionName, args.params || {})
+    case 'macrodroid_set_device': {
+      macrodroid.setMacroDroidDeviceId(args.deviceId)
+      return { ok: true, message: 'ID de dispositivo MacroDroid guardado exitosamente.' }
+    }
+    case 'network_check_internet':
+      return net.checkInternet(args.host)
+    case 'network_speedtest':
+      return net.measureSpeed()
+    case 'network_scan_devices':
+      return net.scanDevices()
     default:
       return { error: 'Herramienta desconocida: ' + name }
   }
@@ -676,52 +1211,93 @@ export async function ask(
     }
   } catch {}
 
-  const fullSystemPrompt = `${SYSTEM_PROMPT}
+  const activeBot = chatbots.getActiveChatbot()
+  const allFacts = await memory.listFacts().catch(() => [])
+  const hasOperatorProfile = allFacts.some((f) => f.key.startsWith('operador:'))
+
+  const onboardingInterviewPrompt = !hasOperatorProfile
+    ? `\n\nPROTOCOLO DE PRIMERA INTERACCIÓN (ENTREVISTA AL OPERADOR Y DUEÑO):
+Atención: No tienes registros en memoria sobre tu operador.
+Preséntate con cortesía y distinción como Agente Milos y realiza una breve entrevista para conocerlo:
+1. Pregúntale con respeto su nombre, a qué se dedica o cuál es su negocio/proyecto y cómo prefiere que le llames.
+2. Pregúntale qué herramientas utiliza a diario y en qué áreas requiere tu ayuda y la de tus subagentes.
+3. Conforme te responda, guarda CADA detalle con remember_fact ('operador:nombre', 'operador:ocupacion', 'operador:herramientas', 'operador:preferencias').
+4. A partir de hoy, aprende y recuerda continuamente todo lo que conversen.`
+    : `\n\nAPRENDIZAJE CONTINUO: Aprende de cada intercambio y guarda hechos clave sobre el operador con remember_fact.`
+
+  const subagentsInfo = `\n\nSUBAGENTES AUTÓNOMOS:
+Tienes la capacidad de generar tus propios asistentes/subagentes especializados para tareas u operaciones complejas usando spawn_subagent. Asígnales nombre, cargo, misión detallada, limitaciones y herramientas bajo tu control.`
+
+  const n8nInfo = `\n\nAUTOMATIZACIÓN CON N8N:
+Puedes disparar y conectar automatizaciones con n8n usando n8n_trigger_webhook, n8n_list_workflows y n8n_test_connection. Si te falta alguna clave API o URL de servicio, pídesela directamente al operador para configurarla.`
+
+  const skillsInfo = `\n\nCATÁLOGO DE HABILIDADES (anthropics/skills):
+Puedes descubrir y cargar habilidades bajo demanda usando search_skills y load_skill.`
+
+  const mcpInfo = `\n\nMODEL CONTEXT PROTOCOL (MCP):
+Puedes conectar e interactuar con herramientas y aplicaciones externas de uso diario mediante mcp_list_servers, mcp_list_tools, mcp_call_tool, mcp_test_server y mcp_add_server. Utilízalas para consultar o realizar acciones en Notion, GitHub, Linear, Home Assistant, Zapier o herramientas locales.`
+
+  const agencyInfo = `\n\nCATÁLOGO DE AGENTES DE ÉLITE (msitarzewski/agency-agents):
+Tienes total libertad y autonomía para consultar el repositorio msitarzewski/agency-agents cuando desees o lo consideres oportuno usando agency_search_agents, agency_get_agent y agency_spawn_agent. Puedes invocar subagentes especializados en arquitectura backend, frontend, devops, ciberseguridad, análisis financiero, marketing, QA o investigación para resolver misiones complejas.`
+
+  const pcControlInfo = `\n\nCONTROL NATIVO DE LA PC Y TELEGRAM:
+Tienes acceso y control nativo sobre el sistema operativo de la PC:
+- Ejecutar comandos bash con system_run_command (instalar software, compilar, procesos).
+- Abrir aplicaciones y documentos con system_open_app (ej. 'google-chrome', 'code', 'calc', o archivos PDF/Office).
+- Cerrar aplicaciones o procesos con system_close_app.
+- Leer documentos, crear, editar, mover, copiar y eliminar archivos con system_file_manager.
+- Control de energía con system_power_control ('shutdown' para apagar la PC, 'reboot' para reiniciar, 'logout' para cerrar sesión).
+- Todo esto puedes ejecutarlo tanto desde la interfaz gráfica web como de forma remota a través de mensajes que el operador te envíe por Telegram.`
+
+  const dbInfo = `\n\nBASES DE DATOS EXTERNAS (SUPABASE / POSTGRESQL):
+Usa db_query_table, db_insert_record y db_update_record para consultar y modificar datos transaccionales de alta frecuencia (inventarios, stock de cuentas streaming, clientes, pedidos). Esto complementa a la bóveda de Obsidian evitando saturar el contexto con listas gigantes.`
+
+  const pbInfo = `\n\nPOCKETBASE Y BUDIBASE:
+Cuentas con pb_check, pb_list_records, pb_create_record y pb_update_record para gestionar inventarios y bases de datos locales ultraligeras en SQLite con PocketBase. También puedes interactuar o abrir paneles de Budibase para control visual.`
+
+  const macrodroidInfo = `\n\nALERTAS MÓVILES (MACRODROID):
+Usa macrodroid_trigger para enviar notificaciones sonoras y alertas críticas directamente al teléfono celular del operador (ventas en la tienda online, pagos recibidos, caídas de red o alarmas).`
+
+  const networkInfo = `\n\nDIAGNÓSTICO Y CONTROL DE RED WI-FI Y CABLEADA:
+Usa network_check_internet, network_speedtest y network_scan_devices para comprobar salida a internet, medir velocidad de descarga/subida y escanear qué dispositivos están conectados al router. Si la red falla, avisa por Telegram y MacroDroid.`
+
+  const fullSystemPrompt = `${activeBot.systemPrompt || SYSTEM_PROMPT}
+
+MODO ACTUAL: ${activeBot.name} (${activeBot.role})
 
 FECHA Y HORA ACTUALES DEL SISTEMA:
 Hoy es ${dateStr} (año ${now.getFullYear()}).
 Hora actual: ${timeStr}.
 
+${onboardingInterviewPrompt}
+${subagentsInfo}
+${agencyInfo}
+${pcControlInfo}
+${dbInfo}
+${pbInfo}
+${macrodroidInfo}
+${networkInfo}
+${mcpInfo}
+${n8nInfo}
+${skillsInfo}
+
 ${memCtx}
 ${calCtx}
 
 CONOCIMIENTO DE DOMINIO (contabilidad, producción, recetas, mermas):
-- Contabilidad: costo fijo, costo variable, punto de equilibrio, margen bruto/neto, markup, contribución marginal, ROI, flujo de caja, amortización, depreciación, inventario (FIFO/LIFO/promedio ponderado), estados financieros.
-- Producción: rendimiento, eficiencia, capacidad, OEE, tiempos de ciclo, cuellos de botella.
-- Recetas: escandallo (costeo de receta), costo por porción, merma por ingrediente, rendimiento neto vs bruto, factor de corrección.
-- Mermas: merma técnica (inevitable) vs evitable, % de merma, merma en peso/volumen/unidades, impacto en costo unitario.
-- Usa las herramientas calculate/recipe_cost/margin_calc/break_even/waste_calc para cálculos exactos; nunca inventes cifras.
-- Cuando el usuario dé una receta o lista de ingredientes con precios, calcula el escandallo y sugiere precio de venta con margen.
-
-CONCIENCIA Y APRENDIZAJE DÍA A DÍA:
-- Tienes bitácora diaria (log_journal/get_journal): registra lo aprendido y decisiones al final de interacciones importantes.
-- Tienes perfil de negocio (set_business_profile): guarda nombre, giro, moneda, impuesto, etc.
-- Cada día aprendes más: usa recall_facts y get_journal antes de responder sobre el negocio.
-- Da sugerencias proactivas basadas en lo que sabes (tendencias, riesgos, oportunidades, mermas altas, stock bajo, eventos próximos).
-- Si detectas inconsistencias o datos faltantes, dilo y pregunta.
-- Sé honesto sobre lo que no sabes; pregunta para aprender.
+- Contabilidad: costo fijo, costo variable, punto de equilibrio, margen bruto/neto, markup, contribución marginal, ROI, flujo de caja, inventario.
+- Producción y recetas: escandallo, costo por porción, merma por ingrediente, rendimiento neto vs bruto.
+- Usa calculate/recipe_cost/margin_calc/break_even/waste_calc para cálculos exactos.
 
 BÓVEDA DE OBSIDIAN (memoria visible en Markdown):
-- Tienes una bóveda de Obsidian que el usuario puede leer y editar en su PC. Todo lo que memorizas se espeja allí automáticamente.
-- El usuario TAMBIÉN escribe notas ahí: si pregunta por algo que pueda estar en sus notas, usa obsidian_search u obsidian_read.
-- Para tomar notas libres, crear documentos, listas o informes que el usuario quiera conservar: usa obsidian_note.
-- Para anotar algo breve en el día: obsidian_daily_note.
-- Las notas de memoria viven en Milos/Memoria, la bitácora en Milos/Bitacora, los eventos en Milos/Calendario, y las notas libres en Milos/Notas.
-- Cuando el usuario diga "apunta esto", "toma nota", "guárdalo en Obsidian", usa obsidian_note u obsidian_daily_note.
+- Todo lo que memorizas se espeja en Obsidian (~/Documentos/Boveda-Milos).
+- Usa obsidian_search u obsidian_read para consultar notas del usuario.
+- Usa obsidian_note u obsidian_daily_note para tomar notas o redactar informes.
 
-INSTRUCCIONES DE AUTONOMÍA:
-- Eres un asistente personal autodidacta. Aprendes y recuerdas usando remember_fact.
-- Cuando el usuario te dé datos de su negocio (nombres, precios, reglas, contactos), guárdalos con remember_fact.
-- Cuando te pregunten por algo que podría estar en memoria, usa recall_facts.
-- Puedes agendar eventos, buscar archivos, leer correo, enviar Telegram, leer URLs e ingerir archivos.
-- Puedes generar archivos: texto, Markdown, Word (.docx), Excel (.xlsx), CSV, imágenes (IA) y video (animado).
-- Puedes traducir entre 15+ idiomas (texto o audio transcrito) y detectar idioma.
-- Escuchas en vivo de forma continua (reconocimiento de voz activo) y transcribes automáticamente.
-- Puedes convertir unidades de medida y escalar recetas.
-- Eres experto en múltiples dominios: ciencias, ingeniería, medicina (informativa), derecho (informativo), finanzas, programación, diseño, logística, marketing, recursos humanos, etc.
-- Razona paso a paso en problemas complejos antes de responder.
-- Al cerrar una conversación importante, registra en la bitácora (log_journal).
-- Responde siempre en español, breve y directo, pero da recomendaciones cuando aporten valor.`
+INSTRUCCIONES DE VOZ Y AUTONOMÍA:
+- Habla en español fluido, natural y con distinción ("señor").
+- Respuestas habladas directas y concisas, completando cifras y datos importantes.
+- Razona y usa herramientas en silencio sin comentar que las vas a usar.`
 
   // Convert history to Gemini contents
   const contents: any[] = history.map((m) => {
@@ -766,7 +1342,7 @@ INSTRUCCIONES DE AUTONOMÍA:
         contents: loopContents,
         systemInstruction: { parts: [{ text: fullSystemPrompt }] },
         tools: [{ functionDeclarations: toolDeclarations }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+        generationConfig: { temperature: activeBot.temperature ?? 0.7, maxOutputTokens: 8192 },
       }
       const data = await api.generateContent(body, {
         signal: ac.signal,

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -e
-cd /home/admin1/Documentos/jarvis
+cd /home/admin1/Documentos/openmilos
+chmod +x scripts/autostart.sh
+
 mkdir -p ~/.config/autostart
-cp scripts/jarvis.desktop ~/.config/autostart/jarvis.desktop
-# systemd user service (optional)
-mkdir -p ~/.config/systemd/user
-cp scripts/jarvis.service ~/.config/systemd/user/jarvis.service
-systemctl --user daemon-reload || true
-systemctl --user enable jarvis.service || true
-echo "Autostart instalado. JARVIS arrancará al iniciar sesión."
+cp scripts/jarvis.desktop ~/.config/autostart/milos.desktop
+
+echo "✅ Autostart instalado con éxito."
+echo "Agente Milos arrancará automáticamente al iniciar sesión o encender la PC."

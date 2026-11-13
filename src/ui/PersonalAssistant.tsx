@@ -7,8 +7,27 @@ import * as telegram from '../lib/telegram'
 import * as ingest from '../lib/ingest'
 import * as repo from '../lib/repo'
 import * as obsidian from '../lib/obsidian'
+import * as n8n from '../lib/n8n'
+import * as skills from '../lib/skillsCatalog'
+import * as chatbots from '../lib/chatbots'
+import * as subagents from '../lib/subagents'
+import * as mcp from '../lib/mcp'
+import * as agency from '../lib/agencyAgents'
 
-type Tab = 'memoria' | 'calendario' | 'archivos' | 'correo' | 'telegram' | 'ingesta' | 'repo' | 'notas'
+type Tab =
+  | 'memoria'
+  | 'chatbots'
+  | 'subagentes'
+  | 'mcp'
+  | 'n8n'
+  | 'skills'
+  | 'calendario'
+  | 'archivos'
+  | 'correo'
+  | 'telegram'
+  | 'ingesta'
+  | 'repo'
+  | 'notas'
 
 export function PersonalAssistant() {
   const [open, setOpen] = useState(false)
@@ -26,11 +45,27 @@ export function PersonalAssistant() {
     <div className="pa-overlay">
       <div className="pa-panel">
         <div className="pa-header">
-          <span>ASISTENTE PERSONAL — MEMORIA & HERRAMIENTAS</span>
+          <span>M.I.L.O.S. — ASISTENTE PERSONAL & HERRAMIENTAS</span>
           <button onClick={() => setOpen(false)}>✕</button>
         </div>
         <div className="pa-tabs">
-          {(['memoria', 'calendario', 'archivos', 'correo', 'telegram', 'ingesta', 'repo', 'notas'] as Tab[]).map((t) => (
+          {(
+            [
+              'memoria',
+              'chatbots',
+              'subagentes',
+              'mcp',
+              'n8n',
+              'skills',
+              'calendario',
+              'archivos',
+              'correo',
+              'telegram',
+              'ingesta',
+              'repo',
+              'notas',
+            ] as Tab[]
+          ).map((t) => (
             <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
               {t.toUpperCase()}
             </button>
@@ -38,6 +73,11 @@ export function PersonalAssistant() {
         </div>
         <div className="pa-body">
           {tab === 'memoria' && <MemoryTab />}
+          {tab === 'chatbots' && <ChatbotsTab />}
+          {tab === 'subagentes' && <SubagentsTab />}
+          {tab === 'mcp' && <McpTab />}
+          {tab === 'n8n' && <N8nTab />}
+          {tab === 'skills' && <SkillsTab />}
           {tab === 'calendario' && <CalendarTab />}
           {tab === 'archivos' && <FilesTab />}
           {tab === 'correo' && <MailTab />}
@@ -419,3 +459,512 @@ function NotesTab() {
     </div>
   )
 }
+
+function ChatbotsTab() {
+  const [profiles, setProfiles] = useState<chatbots.ChatbotProfile[]>(chatbots.getChatbotProfiles())
+  const [active, setActive] = useState<chatbots.ChatbotProfile>(chatbots.getActiveChatbot())
+  const [name, setName] = useState('')
+  const [role, setRole] = useState('')
+  const [description, setDescription] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [status, setStatus] = useState('')
+
+  const selectBot = (id: string) => {
+    chatbots.setActiveChatbot(id)
+    setActive(chatbots.getActiveChatbot())
+    setStatus(`Modo activo: ${chatbots.getActiveChatbot().name}`)
+  }
+
+  const createBot = async () => {
+    if (!name.trim() || !prompt.trim()) return
+    const id = `custom-${Date.now().toString(36)}`
+    const newProfile: chatbots.ChatbotProfile = {
+      id,
+      name: name.trim(),
+      role: role.trim() || 'Asistente Personalizado',
+      description: description.trim() || 'Chatbot personalizado por el usuario',
+      systemPrompt: prompt.trim(),
+      temperature: 0.7,
+      allowedTools: ['all'],
+    }
+    await chatbots.saveChatbotProfile(newProfile)
+    setProfiles(chatbots.getChatbotProfiles())
+    selectBot(id)
+    setName('')
+    setRole('')
+    setDescription('')
+    setPrompt('')
+    setStatus(`Chatbot creado: ${newProfile.name}`)
+  }
+
+  return (
+    <div>
+      <h4>Perfiles de Chatbot Activos</h4>
+      <div className="pa-list">
+        {profiles.map((p) => (
+          <div
+            key={p.id}
+            className={`pa-item ${active.id === p.id ? 'active' : ''}`}
+            style={{ cursor: 'pointer', borderLeft: active.id === p.id ? '3px solid #00e5ff' : 'none' }}
+            onClick={() => selectBot(p.id)}
+          >
+            <div>
+              <strong>{p.name}</strong> — <span className="dim">{p.role}</span>
+              <p style={{ margin: '4px 0 0', fontSize: '0.85em', color: '#888' }}>{p.description}</p>
+            </div>
+            {active.id === p.id ? <span style={{ color: '#00e5ff' }}>✓ ACTIVO</span> : <span>Activar</span>}
+          </div>
+        ))}
+      </div>
+
+      <h4>Crear Nuevo Chatbot</h4>
+      <div className="pa-row">
+        <input style={{ flex: 1 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Nombre (ej. Milos Asesor Legal)" />
+        <input style={{ flex: 1 }} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Cargo / Función" />
+      </div>
+      <div className="pa-row">
+        <input style={{ flex: 1 }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descripción corta" />
+      </div>
+      <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="System Prompt e instrucciones especializadas…" rows={4} />
+      <div className="pa-row">
+        <button onClick={createBot}>Guardar y Activar Chatbot</button>
+      </div>
+      {status && <div className="pa-status">{status}</div>}
+    </div>
+  )
+}
+
+function SubagentsTab() {
+  const [list] = useState<subagents.SubagentSpec[]>(subagents.listRecentSubagents())
+  const [agencyList, setAgencyList] = useState<agency.AgencyAgent[]>(agency.searchAgencyAgents(''))
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedAgent, setSelectedAgent] = useState<agency.AgencyAgent | null>(null)
+  const [taskPrompt, setTaskPrompt] = useState('')
+  const [status, setStatus] = useState('')
+
+  const handleSearch = (q: string) => {
+    setSearchQuery(q)
+    setAgencyList(agency.searchAgencyAgents(q))
+  }
+
+  return (
+    <div>
+      <h4>Subagentes Autónomos Activos / Recientes ({list.length})</h4>
+      <p style={{ fontSize: '0.9em', color: '#aaa', margin: '4px 0 12px' }}>
+        Milos genera y orquesta subagentes especializados para tareas complejas, asignándoles cargo, prompt y herramientas bajo su control.
+      </p>
+      <div className="pa-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '20px' }}>
+        {list.map((s) => (
+          <div key={s.id} className="pa-item" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <strong>{s.name}</strong> <span style={{ color: s.status === 'completed' ? '#00ff88' : '#ffaa00' }}>[{s.status.toUpperCase()}]</span>
+            </div>
+            <div style={{ fontSize: '0.85em', color: '#00e5ff', margin: '2px 0' }}>Cargo: {s.role}</div>
+            <div style={{ fontSize: '0.85em', color: '#ccc' }}>Misión: {s.task}</div>
+            {s.result && (
+              <pre className="pa-pre" style={{ marginTop: '6px', fontSize: '0.8em', width: '100%' }}>
+                {s.result}
+              </pre>
+            )}
+          </div>
+        ))}
+        {list.length === 0 && <div className="pa-status">(No hay subagentes generados recientemente. Pídele a Milos por voz o Telegram que invoque uno)</div>}
+      </div>
+
+      <hr style={{ borderColor: '#333', margin: '16px 0' }} />
+
+      <h4>Catálogo de Roles de Élite (msitarzewski/agency-agents)</h4>
+      <p style={{ fontSize: '0.88em', color: '#aaa', margin: '4px 0 10px' }}>
+        Personalidades estructuradas de alto rendimiento que Milos puede consultar y desplegar como subagentes cuando desee.
+      </p>
+
+      <div className="pa-row">
+        <input
+          style={{ flex: 1 }}
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+          placeholder="Buscar rol o habilidad (ej. backend, qa, security, finance, devops, marketing)…"
+        />
+      </div>
+
+      <div className="pa-list" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+        {agencyList.map((a) => (
+          <div
+            key={a.id}
+            className={`pa-item ${selectedAgent?.id === a.id ? 'active' : ''}`}
+            style={{ cursor: 'pointer', flexDirection: 'column', alignItems: 'flex-start' }}
+            onClick={() => setSelectedAgent(a)}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <span>
+                <span style={{ marginRight: '6px' }}>{a.emoji || '🤖'}</span>
+                <strong>{a.name}</strong>
+              </span>
+              <span className="dim">[{a.category.toUpperCase()}]</span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: '0.84em', color: '#bbb' }}>{a.description}</p>
+            {a.deliverables && (
+              <div style={{ fontSize: '0.78em', color: '#00e5ff', marginTop: '3px' }}>
+                Entregables: {a.deliverables.join(' • ')}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {selectedAgent && (
+        <div style={{ marginTop: '16px', padding: '12px', border: '1px solid #333', borderRadius: '6px' }}>
+          <h4>Asignar Misión a: {selectedAgent.emoji} {selectedAgent.name}</h4>
+          <p style={{ fontSize: '0.85em', color: '#aaa', margin: '2px 0 8px' }}>{selectedAgent.vibe}</p>
+          <div className="pa-row">
+            <input
+              style={{ flex: 1 }}
+              value={taskPrompt}
+              onChange={(e) => setTaskPrompt(e.target.value)}
+              placeholder={`Describe la misión para ${selectedAgent.name}…`}
+            />
+            <button
+              onClick={() => {
+                if (!taskPrompt.trim()) return
+                setStatus(`Subagente ${selectedAgent.name} invocado. Milos procesará la tarea.`)
+                window.dispatchEvent(
+                  new CustomEvent('jarvis:send-text', {
+                    detail: `Milos, invoca a un subagente de agency-agents (${selectedAgent.name}) para la siguiente tarea: ${taskPrompt}`,
+                  }),
+                )
+                setTaskPrompt('')
+              }}
+            >
+              🚀 Desplegar Subagente
+            </button>
+          </div>
+          {status && <div className="pa-status">{status}</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function N8nTab() {
+  const [config, setConfig] = useState(n8n.getN8nConfig())
+  const [urlInput, setUrlInput] = useState(config.url)
+  const [apiKeyInput, setApiKeyInput] = useState(config.apiKey)
+  const [status, setStatus] = useState('')
+  const [workflows, setWorkflows] = useState<any[]>([])
+  const [webhookPath, setWebhookPath] = useState('')
+  const [webhookPayload, setWebhookPayload] = useState('{"origen": "milos"}')
+
+  const testConn = async () => {
+    setStatus('Probando conexión con n8n...')
+    const res = await n8n.testConnection()
+    setStatus(res.message)
+  }
+
+  const saveConfig = () => {
+    n8n.setN8nConfig(urlInput.trim(), apiKeyInput.trim())
+    setConfig(n8n.getN8nConfig())
+    setStatus('Configuración de n8n guardada.')
+  }
+
+  const loadWorkflows = async () => {
+    setStatus('Consultando flujos...')
+    const res = await n8n.listWorkflows()
+    if (res.ok && res.workflows) {
+      setWorkflows(res.workflows)
+      setStatus(`${res.workflows.length} flujos encontrados.`)
+    } else {
+      setStatus(`Error: ${res.error}`)
+    }
+  }
+
+  const triggerHook = async () => {
+    if (!webhookPath.trim()) return
+    let payload = {}
+    try { payload = JSON.parse(webhookPayload) } catch {}
+    setStatus('Disparando webhook...')
+    const res = await n8n.triggerWebhook(webhookPath.trim(), payload)
+    setStatus(res.ok ? `Webhook ejecutado (HTTP ${res.status})` : `Error: ${res.error}`)
+  }
+
+  return (
+    <div>
+      <h4>Automatizaciones n8n (n8n-io/n8n)</h4>
+      <div className="pa-row">
+        <input style={{ flex: 2 }} value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="URL de n8n (ej. http://localhost:5678)" />
+        <input style={{ flex: 2 }} type="password" value={apiKeyInput} onChange={(e) => setApiKeyInput(e.target.value)} placeholder="API Key de n8n" />
+        <button onClick={saveConfig}>Guardar</button>
+        <button onClick={testConn}>Probar Conexión</button>
+      </div>
+
+      <h4>Disparar Webhook de n8n</h4>
+      <div className="pa-row">
+        <input style={{ flex: 2 }} value={webhookPath} onChange={(e) => setWebhookPath(e.target.value)} placeholder="Ruta o URL del Webhook (ej. mi-flujo)" />
+        <input style={{ flex: 3 }} value={webhookPayload} onChange={(e) => setWebhookPayload(e.target.value)} placeholder='Payload JSON (ej. {"dato": 123})' />
+        <button onClick={triggerHook}>Disparar</button>
+      </div>
+
+      <div className="pa-row" style={{ marginTop: '14px' }}>
+        <button onClick={loadWorkflows}>Listar Flujos Existentes</button>
+      </div>
+      {workflows.length > 0 && (
+        <div className="pa-list">
+          {workflows.map((w) => (
+            <div key={w.id} className="pa-item">
+              <span><strong>{w.name}</strong></span>
+              <span style={{ color: w.active ? '#00ff88' : '#888' }}>{w.active ? 'ACTIVO' : 'INACTIVO'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {status && <div className="pa-status">{status}</div>}
+    </div>
+  )
+}
+
+function SkillsTab() {
+  const [list, setList] = useState<skills.Skill[]>(skills.listSkills())
+  const [q, setQ] = useState('')
+  const [selected, setSelected] = useState<skills.Skill | null>(null)
+
+  const search = (term: string) => {
+    setQ(term)
+    setList(term ? skills.searchSkills(term) : skills.listSkills())
+  }
+
+  return (
+    <div>
+      <h4>Catálogo de Habilidades (anthropics/skills)</h4>
+      <div className="pa-row">
+        <input style={{ flex: 1 }} value={q} onChange={(e) => search(e.target.value)} placeholder="Buscar habilidades disponibles…" />
+      </div>
+      <div className="pa-list">
+        {list.map((s) => (
+          <div
+            key={s.name}
+            className={`pa-item ${selected?.name === s.name ? 'active' : ''}`}
+            style={{ cursor: 'pointer', flexDirection: 'column', alignItems: 'flex-start' }}
+            onClick={() => setSelected(s)}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <strong>{s.name}</strong>
+              <span className="dim">[{s.source}]</span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: '0.85em', color: '#aaa' }}>{s.description}</p>
+          </div>
+        ))}
+      </div>
+      {selected && (
+        <div style={{ marginTop: '16px' }}>
+          <h4>Instrucciones de la Habilidad: {selected.name}</h4>
+          <pre className="pa-pre">{selected.instructions}</pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function McpTab() {
+  const [servers, setServers] = useState<mcp.McpServerConfig[]>(mcp.getMcpServers())
+  const [newName, setNewName] = useState('')
+  const [newUrl, setNewUrl] = useState('')
+  const [newToken, setNewToken] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [selectedServer, setSelectedServer] = useState<mcp.McpServerConfig | null>(null)
+  const [statusMsg, setStatusMsg] = useState('')
+
+  const refresh = () => {
+    const list = mcp.getMcpServers()
+    setServers(list)
+    if (selectedServer) {
+      setSelectedServer(list.find((s) => s.id === selectedServer.id) || null)
+    }
+  }
+
+  const handleToggle = (id: string) => {
+    mcp.toggleMcpServer(id)
+    refresh()
+  }
+
+  const handleDelete = (id: string) => {
+    if (confirm('¿Eliminar este servidor MCP?')) {
+      mcp.deleteMcpServer(id)
+      if (selectedServer?.id === id) setSelectedServer(null)
+      refresh()
+    }
+  }
+
+  const handleTest = async (id: string) => {
+    setTestingId(id)
+    setStatusMsg('Comprobando conexión MCP…')
+    const res = await mcp.testMcpServer(id)
+    setTestingId(null)
+    setStatusMsg(res.message)
+    refresh()
+  }
+
+  const handleAdd = () => {
+    if (!newName.trim() || !newUrl.trim()) {
+      setStatusMsg('Por favor ingresa nombre y URL del servidor MCP.')
+      return
+    }
+    mcp.addMcpServer({
+      name: newName.trim(),
+      url: newUrl.trim(),
+      bearerToken: newToken.trim() || undefined,
+      description: newDesc.trim() || undefined,
+      enabled: true,
+      transport: 'http',
+    })
+    setNewName('')
+    setNewUrl('')
+    setNewToken('')
+    setNewDesc('')
+    setStatusMsg('Servidor MCP añadido exitosamente.')
+    refresh()
+  }
+
+  return (
+    <div>
+      <h4>Model Context Protocol (MCP) — Conexión con Herramientas Diarias</h4>
+      <p style={{ fontSize: '0.88em', color: '#aaa', margin: '4px 0 12px' }}>
+        Conecta Milos con tus aplicaciones, servicios y terminal local mediante el estándar abierto MCP.
+      </p>
+
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+        <button
+          onClick={() => {
+            setNewName('Notion MCP')
+            setNewUrl('https://mcp.notion.com/mcp')
+            setNewDesc('Páginas, bases de datos y tareas en Notion.')
+          }}
+        >
+          ➕ Plantilla Notion
+        </button>
+        <button
+          onClick={() => {
+            setNewName('GitHub Copilot / Repo MCP')
+            setNewUrl('https://api.githubcopilot.com/mcp/')
+            setNewDesc('Repositorios, issues y PRs en GitHub.')
+          }}
+        >
+          ➕ Plantilla GitHub
+        </button>
+        <button
+          onClick={() => {
+            setNewName('Linear MCP')
+            setNewUrl('https://mcp.linear.app/mcp')
+            setNewDesc('Tareas, issues y sprints en Linear.')
+          }}
+        >
+          ➕ Plantilla Linear
+        </button>
+        <button
+          onClick={() => {
+            setNewName('Home Assistant MCP')
+            setNewUrl('http://homeassistant.local:8123/api/mcp')
+            setNewDesc('Control de domótica, luces y sensores.')
+          }}
+        >
+          ➕ Plantilla Domótica
+        </button>
+        <button
+          onClick={() => {
+            setNewName('Zapier MCP')
+            setNewUrl('https://mcp.zapier.com/mcp')
+            setNewDesc('Conexión con 6,000+ apps vía Zapier.')
+          }}
+        >
+          ➕ Plantilla Zapier
+        </button>
+      </div>
+
+      <div className="pa-row">
+        <input style={{ flex: 2 }} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nombre del servidor (ej. Notion MCP)" />
+        <input style={{ flex: 3 }} value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="URL endpoint MCP (ej. http://localhost:8765/mcp)" />
+        <input style={{ flex: 2 }} type="password" value={newToken} onChange={(e) => setNewToken(e.target.value)} placeholder="Token / API Key opcional" />
+        <input style={{ flex: 2 }} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="Descripción" />
+        <button onClick={handleAdd}>Añadir MCP</button>
+      </div>
+
+      {statusMsg && <div className="pa-status">{statusMsg}</div>}
+
+      <div className="pa-list" style={{ marginTop: '16px' }}>
+        {servers.map((s) => (
+          <div
+            key={s.id}
+            className={`pa-item ${selectedServer?.id === s.id ? 'active' : ''}`}
+            style={{ flexDirection: 'column', alignItems: 'stretch' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <strong>{s.name}</strong>
+                <span
+                  style={{
+                    marginLeft: '8px',
+                    fontSize: '0.8em',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    backgroundColor: s.status === 'online' ? '#00ff8822' : s.status === 'offline' ? '#ff444422' : '#ffaa0022',
+                    color: s.status === 'online' ? '#00ff88' : s.status === 'offline' ? '#ff6666' : '#ffaa00',
+                  }}
+                >
+                  {s.status === 'online' ? 'EN LÍNEA' : s.status === 'offline' ? 'SIN CONEXIÓN' : 'NO PROBADO'}
+                </span>
+                <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#888' }}>
+                  ({s.tools?.length || 0} herramientas)
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={() => handleToggle(s.id)}>
+                  {s.enabled ? '🟢 Habilitado' : '⚪ Deshabilitado'}
+                </button>
+                <button disabled={testingId === s.id} onClick={() => handleTest(s.id)}>
+                  {testingId === s.id ? 'Probando…' : 'Probar'}
+                </button>
+                <button onClick={() => setSelectedServer(selectedServer?.id === s.id ? null : s)}>
+                  {selectedServer?.id === s.id ? 'Ocultar' : 'Ver Tools'}
+                </button>
+                <button style={{ color: '#ff6666' }} onClick={() => handleDelete(s.id)}>
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div style={{ fontSize: '0.82em', color: '#888', marginTop: '4px' }}>
+              Endpoint: <code>{s.url}</code>
+              {s.description && ` — ${s.description}`}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selectedServer && (
+        <div style={{ marginTop: '18px', padding: '12px', border: '1px solid #333', borderRadius: '6px' }}>
+          <h4>Herramientas de: {selectedServer.name}</h4>
+          {(!selectedServer.tools || selectedServer.tools.length === 0) ? (
+            <p className="dim">No hay herramientas registradas para este servidor aún. Presiona "Probar" para sincronizar.</p>
+          ) : (
+            <div className="pa-list">
+              {selectedServer.tools.map((t) => (
+                <div key={t.name} className="pa-item" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                    <strong style={{ color: '#00ffff' }}>{t.name}</strong>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.85em', color: '#ccc' }}>
+                    {t.description || 'Sin descripción'}
+                  </p>
+                  {t.inputSchema?.properties && (
+                    <div style={{ fontSize: '0.78em', color: '#888', marginTop: '4px' }}>
+                      Parámetros: {Object.keys(t.inputSchema.properties).join(', ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+

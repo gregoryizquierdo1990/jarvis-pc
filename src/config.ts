@@ -12,6 +12,11 @@
  * VITE_BACKEND silently selected the direct path and then complained about a
  * missing API key. Treat whitespace-only as unset everywhere in this file.
  */
+const rawEnv: Record<string, any> =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env) ||
+  (typeof process !== 'undefined' && process.env) ||
+  {}
+
 function str(raw: unknown): string | undefined {
   const value = typeof raw === 'string' ? raw.trim() : ''
   return value === '' ? undefined : value
@@ -60,7 +65,7 @@ function flag(name: string, raw: unknown, fallback: boolean): boolean {
  */
 export const BACKEND: 'gemini' | 'bridge' | 'direct' = choice(
   'VITE_BACKEND',
-  import.meta.env.VITE_BACKEND,
+  rawEnv.VITE_BACKEND,
   ['gemini', 'bridge', 'direct'] as const,
   'gemini',
 )
@@ -71,7 +76,7 @@ export const BACKEND: 'gemini' | 'bridge' | 'direct' = choice(
  * `wss://` maps to `https://` on its own, which is why this is a prefix swap
  * rather than a hardcoded scheme.
  */
-export const BRIDGE_WS_URL = str(import.meta.env.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
+export const BRIDGE_WS_URL = str(rawEnv.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
 export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
 
 /**
@@ -87,7 +92,7 @@ export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
  */
 export const USE_ELEVENLABS = flag(
   'VITE_USE_ELEVENLABS',
-  import.meta.env.VITE_USE_ELEVENLABS,
+  rawEnv.VITE_USE_ELEVENLABS,
   false,
 )
 
@@ -109,7 +114,7 @@ export const USE_ELEVENLABS = flag(
  */
 export const TTS_ENGINE: 'kokoro' | 'system' = choice(
   'VITE_TTS_ENGINE',
-  import.meta.env.VITE_TTS_ENGINE,
+  rawEnv.VITE_TTS_ENGINE,
   ['kokoro', 'system'] as const,
   'system',
 )
@@ -123,20 +128,20 @@ export const TTS_ENGINE: 'kokoro' | 'system' = choice(
  */
 export const KOKORO_VOICE = choice(
   'VITE_KOKORO_VOICE',
-  import.meta.env.VITE_KOKORO_VOICE,
+  rawEnv.VITE_KOKORO_VOICE,
   ['bm_george', 'bm_fable', 'bm_lewis', 'bm_daniel'] as const,
   'bm_george',
 )
 
 export const env = {
-  geminiKey: str(import.meta.env.VITE_GEMINI_API_KEY) ?? '',
-  geminiKey2: str(import.meta.env.VITE_GEMINI_API_KEY_2) ?? '',
-  geminiModel: str(import.meta.env.VITE_GEMINI_MODEL) ?? 'gemini-3.8-flash',
-  anthropicKey: str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? '',
-  elevenKey: str(import.meta.env.VITE_ELEVENLABS_API_KEY) ?? '',
+  geminiKey: str(rawEnv.VITE_GEMINI_API_KEY) ?? '',
+  geminiKey2: str(rawEnv.VITE_GEMINI_API_KEY_2) ?? '',
+  geminiModel: str(rawEnv.VITE_GEMINI_MODEL) ?? 'gemini-flash-lite-latest',
+  anthropicKey: str(rawEnv.VITE_ANTHROPIC_API_KEY) ?? '',
+  elevenKey: str(rawEnv.VITE_ELEVENLABS_API_KEY) ?? '',
   elevenVoiceId:
-    str(import.meta.env.VITE_ELEVENLABS_VOICE_ID) ?? 'JBFqnCBsd6RMkjVDRZzb',
-  porcupineKey: str(import.meta.env.VITE_PICOVOICE_ACCESS_KEY) ?? '',
+    str(rawEnv.VITE_ELEVENLABS_VOICE_ID) ?? 'JBFqnCBsd6RMkjVDRZzb',
+  porcupineKey: str(rawEnv.VITE_PICOVOICE_ACCESS_KEY) ?? '',
 }
 
 /** `claude-opus-5` is the strongest model; `claude-sonnet-5` trades a little
@@ -206,16 +211,16 @@ export const MCP_SERVERS: McpServer[] = [
   {
     name: 'zapier',
     label: 'Zapier',
-    url: str(import.meta.env.VITE_ZAPIER_MCP_URL) ?? '',
-    enabled: Boolean(str(import.meta.env.VITE_ZAPIER_MCP_URL)),
+    url: str(rawEnv.VITE_ZAPIER_MCP_URL) ?? '',
+    enabled: Boolean(str(rawEnv.VITE_ZAPIER_MCP_URL)),
   },
 
   // Alternative/complementary gateway: ~3,000 apps, free for personal use.
   {
     name: 'pipedream',
     label: 'Pipedream',
-    url: str(import.meta.env.VITE_PIPEDREAM_MCP_URL) ?? '',
-    enabled: Boolean(str(import.meta.env.VITE_PIPEDREAM_MCP_URL)),
+    url: str(rawEnv.VITE_PIPEDREAM_MCP_URL) ?? '',
+    enabled: Boolean(str(rawEnv.VITE_PIPEDREAM_MCP_URL)),
   },
 
   // Official first-party servers. Each needs its own OAuth token pasted in.
@@ -223,36 +228,36 @@ export const MCP_SERVERS: McpServer[] = [
     name: 'notion',
     label: 'Notion',
     url: 'https://mcp.notion.com/mcp',
-    token: str(import.meta.env.VITE_NOTION_TOKEN),
-    enabled: Boolean(str(import.meta.env.VITE_NOTION_TOKEN)),
+    token: str(rawEnv.VITE_NOTION_TOKEN),
+    enabled: Boolean(str(rawEnv.VITE_NOTION_TOKEN)),
   },
   {
     name: 'linear',
     label: 'Linear',
     url: 'https://mcp.linear.app/mcp',
-    token: str(import.meta.env.VITE_LINEAR_TOKEN),
-    enabled: Boolean(str(import.meta.env.VITE_LINEAR_TOKEN)),
+    token: str(rawEnv.VITE_LINEAR_TOKEN),
+    enabled: Boolean(str(rawEnv.VITE_LINEAR_TOKEN)),
   },
   {
     name: 'github',
     label: 'GitHub',
     url: 'https://api.githubcopilot.com/mcp/',
-    token: str(import.meta.env.VITE_GITHUB_TOKEN),
-    enabled: Boolean(str(import.meta.env.VITE_GITHUB_TOKEN)),
+    token: str(rawEnv.VITE_GITHUB_TOKEN),
+    enabled: Boolean(str(rawEnv.VITE_GITHUB_TOKEN)),
   },
   {
     name: 'stripe',
     label: 'Stripe',
     url: 'https://mcp.stripe.com',
-    token: str(import.meta.env.VITE_STRIPE_TOKEN),
-    enabled: Boolean(str(import.meta.env.VITE_STRIPE_TOKEN)),
+    token: str(rawEnv.VITE_STRIPE_TOKEN),
+    enabled: Boolean(str(rawEnv.VITE_STRIPE_TOKEN)),
   },
   {
     name: 'sentry',
     label: 'Sentry',
     url: 'https://mcp.sentry.dev/mcp',
-    token: str(import.meta.env.VITE_SENTRY_TOKEN),
-    enabled: Boolean(str(import.meta.env.VITE_SENTRY_TOKEN)),
+    token: str(rawEnv.VITE_SENTRY_TOKEN),
+    enabled: Boolean(str(rawEnv.VITE_SENTRY_TOKEN)),
   },
   // Home Assistant is self-hosted, so this needs a publicly reachable URL
   // (Nabu Casa Cloud, or a Cloudflare tunnel). Worth the setup — "Jarvis, dim
@@ -263,11 +268,11 @@ export const MCP_SERVERS: McpServer[] = [
   {
     name: 'home',
     label: 'Home',
-    url: str(import.meta.env.VITE_HOMEASSISTANT_MCP_URL) ?? '',
-    token: str(import.meta.env.VITE_HOMEASSISTANT_TOKEN),
+    url: str(rawEnv.VITE_HOMEASSISTANT_MCP_URL) ?? '',
+    token: str(rawEnv.VITE_HOMEASSISTANT_TOKEN),
     enabled: Boolean(
-      str(import.meta.env.VITE_HOMEASSISTANT_MCP_URL) &&
-        str(import.meta.env.VITE_HOMEASSISTANT_TOKEN),
+      str(rawEnv.VITE_HOMEASSISTANT_MCP_URL) &&
+        str(rawEnv.VITE_HOMEASSISTANT_TOKEN),
     ),
   },
 ]

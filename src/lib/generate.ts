@@ -2,7 +2,13 @@
  * Generación de archivos: texto, documentos, Excel, imágenes y video.
  */
 
-import { saveAs } from 'file-saver'
+import fileSaver from 'file-saver'
+const saveAs =
+  typeof (fileSaver as any)?.saveAs === 'function'
+    ? (fileSaver as any).saveAs
+    : typeof fileSaver === 'function'
+      ? fileSaver
+      : (_blob: any, _name: string) => {}
 import * as XLSX from 'xlsx'
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
 import { env } from '../config'

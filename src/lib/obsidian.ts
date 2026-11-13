@@ -6,7 +6,10 @@
  * espeja aquí, y lo que el usuario escribe en Obsidian lo puede leer Milos.
  */
 
-const BRIDGE = () => (window as any).__BRIDGE_HTTP__ || 'http://localhost:8787'
+const BRIDGE = () =>
+  (typeof window !== 'undefined' ? (window as any).__BRIDGE_HTTP__ : null) ||
+  (typeof process !== 'undefined' ? process.env.JARVIS_BRIDGE_HTTP : null) ||
+  'http://localhost:8787'
 
 /** Convierte un título en nombre de archivo seguro. */
 export function slug(s: string, maxlen = 60): string {
@@ -23,10 +26,14 @@ export function slug(s: string, maxlen = 60): string {
 }
 
 async function j<T = any>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BRIDGE() + url, init)
-  const d = await res.json()
-  if (d?.error) throw new Error(d.error)
-  return d as T
+  try {
+    const res = await fetch(BRIDGE() + url, init)
+    const d = await res.json()
+    if (d?.error) throw new Error(d.error)
+    return d as T
+  } catch (err: any) {
+    return { error: err.message || 'Bridge no alcanzable' } as unknown as T
+  }
 }
 
 export async function root(): Promise<string> {

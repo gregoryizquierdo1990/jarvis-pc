@@ -1785,6 +1785,116 @@ const handleRequest = async (req, res) => {
     }
   }
 
+  // ---------- Control Nativo de PC / Sistema ----------
+  if (req.method === 'POST' && req.url === '/system/exec') {
+    try {
+      const body = await readJson(req)
+      const command = body.command || ''
+      const cwd = body.cwd || homedir()
+      const { stdout, stderr } = await execFileP('bash', ['-c', command], {
+        cwd,
+        timeout: 45000,
+        maxBuffer: 4 * 1024 * 1024,
+      })
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: true, stdout, stderr }))
+    } catch (err) {
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err), stdout: err?.stdout, stderr: err?.stderr }))
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/system/app') {
+    try {
+      const body = await readJson(req)
+      const action = body.action || 'open'
+      const target = body.target || ''
+      if (action === 'close') {
+        await execFileP('pkill', ['-f', target]).catch(() => ({}))
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, message: `Proceso ${target} cerrado.` }))
+      } else {
+        execFile('xdg-open', [target], (err) => {
+          if (err) execFile(target, [], () => {})
+        })
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, message: `Abierto: ${target}` }))
+      }
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/system/power') {
+    try {
+      const body = await readJson(req)
+      const action = body.action
+      if (action === 'shutdown') {
+        execFile('systemctl', ['poweroff'], () => {})
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, message: 'Apagando el equipo, señor.' }))
+      } else if (action === 'reboot') {
+        execFile('systemctl', ['reboot'], () => {})
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, message: 'Reiniciando el equipo, señor.' }))
+      } else if (action === 'logout') {
+        execFile('gnome-session-quit', ['--logout', '--no-prompt'], (err) => {
+          if (err) execFile('pkill', ['-KILL', '-u', process.env.USER || 'admin1'], () => {})
+        })
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, message: 'Cerrando sesión, señor.' }))
+      }
+      res.writeHead(400, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: 'Acción de energía no reconocida.' }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+
+  if (req.method === 'POST' && req.url === '/system/file-op') {
+    try {
+      const body = await readJson(req)
+      const op = body.op
+      const p1 = resolvePath(homedir(), body.path || '')
+      if (op === 'read') {
+        const content = await readFile(p1, 'utf8')
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, content }))
+      } else if (op === 'write') {
+        await mkdir(dirname(p1), { recursive: true })
+        await writeFile(p1, body.content || '')
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, path: p1 }))
+      } else if (op === 'move') {
+        const p2 = resolvePath(homedir(), body.dest || '')
+        await execFileP('mv', [p1, p2])
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, from: p1, to: p2 }))
+      } else if (op === 'copy') {
+        const p2 = resolvePath(homedir(), body.dest || '')
+        await execFileP('cp', ['-r', p1, p2])
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, from: p1, to: p2 }))
+      } else if (op === 'delete') {
+        await execFileP('rm', ['-rf', p1])
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, deleted: p1 }))
+      } else if (op === 'list') {
+        const entries = await readdir(p1, { withFileTypes: true })
+        const list = entries.map((e) => ({ name: e.name, isDir: e.isDirectory() }))
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+        return res.end(JSON.stringify({ ok: true, path: p1, entries: list }))
+      }
+      res.writeHead(400, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: 'Operación no válida' }))
+    } catch (err) {
+      res.writeHead(500, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify({ ok: false, error: String(err?.message ?? err) }))
+    }
+  }
+
   res.writeHead(404, cors)
   res.end()
 }

@@ -29,6 +29,7 @@ import {
   watchConnection,
   connectedLabels,
   usingBridge,
+  usingGemini,
   type Msg,
 } from './lib/brain'
 import { startAnalyser, micLevel } from './lib/audio'
@@ -65,11 +66,11 @@ const newId = () =>
 
 /** The same mishearings voice.ts accepts for the wake word — otherwise a turn
  *  that woke him as "travis" gets that word sent on to the model as a question. */
-const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv)'
-/** A bare vocative — "Jarvis", "hey jarvis" — with nothing asked. */
-const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i')
-/** A leading vocative on a real command: "Jarvis, what's the weather". */
-const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
+const NAME = '(?:milos|milo|miloss|jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv)'
+/** A bare vocative — "Milos", "hey milos", "hola milos" — with nothing asked. */
+const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo|oye|hola)?\\s*${NAME}[\\s,.!?]*$`, 'i')
+/** A leading vocative on a real command: "Milos, what's the weather". */
+const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo|oye|hola)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
 
 export default function App() {
   const store = useStore
@@ -494,7 +495,7 @@ export default function App() {
     })
     const warming = warm().catch((err: Error) => s.setError(err.message))
 
-    if (!usingBridge && !env.anthropicKey) {
+    if (!usingBridge && !usingGemini && !env.anthropicKey) {
       s.setError(
         'No Anthropic API key — copy .env.example to .env.local and set VITE_ANTHROPIC_API_KEY.',
       )
@@ -576,6 +577,21 @@ export default function App() {
   }
 
   // -- clap to start --------------------------------------------------------
+
+  // Auto-arranque al encender la PC o con parámetro URL ?autostart=1
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('autostart') === '1' || params.get('auto') === 'true') {
+      const timer = setTimeout(() => {
+        if (store.getState().phase === 'offline') {
+          void powerOn()
+        }
+      }, 700)
+      return () => clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /**
    * A clap brings him up, as an alternative to the button.

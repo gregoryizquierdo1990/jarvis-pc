@@ -1,13 +1,12 @@
 [Unit]
-Description=JARVIS personal assistant (bridge + face)
+Description=Agente Milos personal assistant
 After=graphical-session.target network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/admin1/Documentos/jarvis
-Environment=PORT=5180
-ExecStart=/usr/bin/npm start
+WorkingDirectory=/home/admin1/Documentos/openmilos
+ExecStart=/usr/bin/npm run dev -- --port 5173
 Restart=on-failure
 RestartSec=10
 

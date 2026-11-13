@@ -21,11 +21,12 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 /** Modelos de respaldo si el principal está saturado (503 alta demanda). */
 const FALLBACK_MODELS = [
-  'gemini-flash-latest',
-  'gemini-3.6-flash',
-  'gemini-3.5-flash',
-  'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.7-flash',
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-flash-latest',
 ]
 
 /** Presupuesto total de reintentos por llamada (ms). */
@@ -132,7 +133,7 @@ export async function generateContent(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
-          signal: attemptSignal(12_000, opts.signal),
+          signal: attemptSignal(8_000, opts.signal),
         })
         if (!res.ok) {
           const errJson = await res.json().catch(() => ({}))
