@@ -26,6 +26,7 @@ import * as pb from './pocketbase'
 import * as macrodroid from './macrodroid'
 import * as net from './network'
 import * as moneyprinter from './moneyprinter'
+import * as copy from './copywriting'
 
 export type AskHandlers = {
   onText: (delta: string) => void
@@ -927,6 +928,59 @@ const toolDeclarations = [
       required: ['url'],
     },
   },
+  {
+    name: 'copy_generate',
+    description:
+      'Genera textos comerciales persuasivos de alta conversión para Estados de WhatsApp, Grupos de Compra-Venta o Telegram basados en fórmulas comerciales (Gancho, Oferta, Urgencia, CTA), adaptados al producto, precio y métodos de pago.',
+    parameters: {
+      type: 'object',
+      properties: {
+        producto: { type: 'string', description: 'Nombre del producto o servicio (ej. "Max Platino + Vix", "Netflix 1 Pantalla", "Almuerzo Casero")' },
+        precio: { type: 'string', description: 'Precio comercial (ej. "8.50$", "150 Bs")' },
+        modalidad_pago: { type: 'string', description: 'Métodos de pago aceptados (default: "Pago Móvil 🇻🇪 | Binance USDT 🟡 | Zinli 💳 | Efectivo")' },
+        categoria: { type: 'string', enum: ['streaming', 'comida', 'confeccion', 'recargas', 'general'], description: 'Categoría del producto' },
+        formato: { type: 'string', enum: ['todos', 'estado', 'grupo'], description: 'Formato: "todos", "estado" (WhatsApp Status) o "grupo" (Grupos Compra-Venta)' },
+      },
+      required: ['producto', 'precio'],
+    },
+  },
+  {
+    name: 'copy_list_templates',
+    description: 'Lista todas las plantillas y fórmulas comerciales de copywriting almacenadas en la memoria y en prompts_ventas.md.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'copy_save_template',
+    description:
+      'Crea, actualiza o perfecciona una plantilla de ventas en prompts_ventas.md para que Milos evolucione y mejore sus copys publicitarios con el tiempo.',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Identificador único (ej. "streaming-promo-flash", "comida-domingo")' },
+        category: { type: 'string', description: 'Categoría (streaming, comida, confeccion, recargas, etc.)' },
+        title: { type: 'string', description: 'Título descriptivo de la plantilla' },
+        target: { type: 'string', enum: ['estado_whatsapp', 'grupo_compra_venta', 'telegram', 'combo'], description: 'Canal de destino' },
+        structure: { type: 'string', description: 'Estructura del copy con variables {producto}, {precio}, {modalidad_pago}' },
+      },
+      required: ['id', 'category', 'title', 'target', 'structure'],
+    },
+  },
+  {
+    name: 'ad_banner_create',
+    description:
+      'Diseña y genera al instante un afiche/banner publicitario HD (1080p) con fondo degradado cyberpunk, badge de precio gigante, beneficios y métodos de pago (Pago Móvil, Binance, etc.) para Estados de WhatsApp o Grupos sin consumir GPU.',
+    parameters: {
+      type: 'object',
+      properties: {
+        titulo: { type: 'string', description: 'Título principal del producto o promoción (ej. "MAX PLATINO + VIX")' },
+        precio: { type: 'string', description: 'Precio visible a destacar (ej. "$8.50")' },
+        subtitulo: { type: 'string', description: 'Subtítulo o descripción breve (ej. "Películas, Series y Deportes en VIVO")' },
+        formato: { type: 'string', enum: ['status', 'post'], description: '"status" (9:16 vertical para Estados) o "post" (1:1 cuadrado para Grupos)' },
+        pagos: { type: 'string', description: 'Texto de métodos de pago (ej. "Pago Móvil 🇻🇪 · Binance USDT 🟡 · Zinli 💳 · Efectivo")' },
+      },
+      required: ['titulo', 'precio'],
+    },
+  },
 ]
 
 export const toolDeclarationsMap: Record<string, any> = {}
@@ -1217,6 +1271,42 @@ async function executeTool(name: string, args: any): Promise<any> {
       moneyprinter.setMoneyPrinterConfig(args.url, args.apiKey)
       return { ok: true, message: `MoneyPrinterTurbo configurado en ${args.url}` }
     }
+    case 'copy_generate': {
+      const prod = args.producto.replace(/"/g, '\\"')
+      const prec = args.precio.replace(/"/g, '\\"')
+      const mod = (args.modalidad_pago || 'Pago Móvil / Binance USDT / Zinli / Efectivo').replace(/"/g, '\\"')
+      const cat = args.categoria || 'general'
+      const form = args.formato || 'todos'
+      const cmd = `python3 scripts/generate_copy.py -p "${prod}" -pr "${prec}" -m "${mod}" -c "${cat}" -f "${form}"`
+      return pc.execCommand(cmd)
+    }
+    case 'copy_list_templates': {
+      return { ok: true, templates: copy.getSalesTemplates() }
+    }
+    case 'copy_save_template': {
+      const saveRes = copy.saveSalesTemplate({
+        id: args.id,
+        category: args.category,
+        title: args.title,
+        target: args.target,
+        structure: args.structure,
+      })
+      // También registrar en Obsidian y bitácora
+      obsidian.writeNote(
+        `Plantillas-Ventas/${args.id}.md`,
+        `# Plantilla de Ventas: ${args.title}\n**Categoría:** ${args.category}\n**Canal:** ${args.target}\n\n## Estructura:\n\`\`\`\n${args.structure}\n\`\`\``
+      ).catch(() => {})
+      return saveRes
+    }
+    case 'ad_banner_create': {
+      const tit = (args.titulo || 'OFERTA ESPECIAL').replace(/"/g, '\\"')
+      const pr = (args.precio || '$0.00').replace(/"/g, '\\"')
+      const sub = (args.subtitulo || 'Entrega Inmediata · 100% Garantizado').replace(/"/g, '\\"')
+      const form = args.formato || 'status'
+      const pag = (args.pagos || 'Pago Móvil 🇻🇪 · Binance USDT 🟡 · Zinli 💳 · Efectivo').replace(/"/g, '\\"')
+      const cmd = `python3 scripts/generate_ad_banner.py -t "${tit}" -p "${pr}" -s "${sub}" -f "${form}" -m "${pag}"`
+      return pc.execCommand(cmd)
+    }
     default:
       return { error: 'Herramienta desconocida: ' + name }
   }
@@ -1326,6 +1416,12 @@ Cuando el operador te pida un video o contenido audiovisual:
 3. Lanza moneyprinter_create_video configurando aspecto (9:16 o 16:9), voz neural en español (ej. es-ES-AlvaroNeural o es-MX-DaliaNeural), subtítulos animados y música de fondo.
 4. Monitorea el progreso con moneyprinter_check_status y entrega el link directo de previsualización o descarga.`
 
+  const copywritingInfo = `\n\nCOPYWRITING DE VENTAS Y BANNERS PUBLICITARIOS (prompts_ventas.md):
+Cuentas con un motor de persuasión comercial basado en las mejores estructuras de awesome-chatgpt-prompts y prompts_ventas.md:
+- Redacción para WhatsApp: Usa copy_generate para crear copys de alta conversión para Estados de WhatsApp y Grupos de Compra-Venta con ganchos, viñetas, precios y métodos de pago (Pago Móvil, Binance USDT, Zinli, Efectivo).
+- Creación de Banners HD al instante: Usa ad_banner_create para diseñar piezas gráficas publicitarias en alta definición (1080p) con degradados cyberpunk, insignias de precio gigante y sellos de métodos de pago sin consumir memoria ni GPU.
+- Auto-aprendizaje y evolución: Cuentas con copy_list_templates y copy_save_template para crear nuevas plantillas comerciales por ti mismo, modificarlas y perfeccionarlas con el tiempo según los productos del negocio.`
+
   const fullSystemPrompt = `${activeBot.systemPrompt || SYSTEM_PROMPT}
 
 MODO ACTUAL: ${activeBot.name} (${activeBot.role})
@@ -1343,6 +1439,7 @@ ${pbInfo}
 ${macrodroidInfo}
 ${networkInfo}
 ${moneyprinterInfo}
+${copywritingInfo}
 ${mcpInfo}
 ${n8nInfo}
 ${skillsInfo}
