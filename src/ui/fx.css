@@ -3,7 +3,7 @@
 .fx-aura-img{position:absolute;left:-6%;top:-6%;width:112%;height:112%;object-fit:cover;transition:opacity 1.4s ease;animation:fx-drift 52s ease-in-out infinite alternate;will-change:transform}
 @keyframes fx-drift{to{transform:translate3d(-2.5%,2%,0) scale(1.06)}}
 
-.fx-const{width:min(78vmin,760px);height:min(78vmin,760px);overflow:visible;pointer-events:none}
+.fx-const{position:absolute;left:50%;top:50%;width:min(78vmin,760px);height:min(78vmin,760px);transform:translate(-50%,-50%);overflow:visible;pointer-events:none}
 .fx-node{animation:fx-in .6s ease both}
 @keyframes fx-in{from{opacity:0}to{opacity:1}}
 .fx-link{stroke:currentColor;stroke-width:1;stroke-opacity:.55;stroke-dasharray:4 8;animation:fx-flow 1.2s linear infinite}
@@ -41,3 +41,34 @@
 .fx-sub button{min-height:44px;padding:0 18px;border-radius:999px;background:rgba(8,16,40,.6);color:#cfe9ff;border:1px solid rgba(110,190,255,.3);font:inherit;cursor:pointer}
 .fx-sub button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.fx-aura-img,.fx-link,.fx-halo,.fx-code pre,.fx-spin,.fx-orbit{animation:none!important}}
+
+/* ---------- Universo neón ---------- */
+.fx-uni{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:radial-gradient(ellipse at 50% 46%,#0a1c4a 0%,#02030f 64%)}
+.fx-neb{position:absolute;border-radius:50%;animation:fx-neb 26s ease-in-out infinite alternate;will-change:transform}
+.fx-neb.n1{left:-12vw;top:-16vh;width:54vw;height:54vw;background:radial-gradient(circle,rgba(150,70,255,.42),transparent 66%)}
+.fx-neb.n2{right:-14vw;bottom:-24vh;width:58vw;height:58vw;background:radial-gradient(circle,rgba(0,229,255,.30),transparent 66%);animation-direction:alternate-reverse;animation-duration:32s}
+.fx-neb.n3{right:6vw;top:-20vh;width:40vw;height:40vw;background:radial-gradient(circle,rgba(30,90,255,.38),transparent 66%);animation-duration:30s}
+.fx-neb.n4{left:4vw;bottom:-22vh;width:36vw;height:36vw;background:radial-gradient(circle,rgba(30,255,160,.20),transparent 66%);animation:none}
+@keyframes fx-neb{to{transform:translate3d(-3vw,3vh,0) scale(1.08)}}
+.fx-star{position:absolute;left:0;top:0;width:1px;height:1px;border-radius:50%;animation:fx-twinkle 5s ease-in-out infinite}
+.fx-star.s2{width:2px;height:2px;animation-duration:8s;animation-direction:reverse}
+@keyframes fx-twinkle{50%{opacity:.35}}
+
+/* ---------- Globo de puntos y órbitas ---------- */
+.fx-globe{position:absolute;left:50%;top:50%;width:420px;height:420px;margin:-210px 0 0 -210px;perspective:1100px;pointer-events:none;opacity:.55}
+.fx-globe-spin{position:absolute;inset:0;transform-style:preserve-3d;animation:fx-spin3d 40s linear infinite}
+@keyframes fx-spin3d{from{transform:rotateX(-16deg) rotateY(0)}to{transform:rotateX(-16deg) rotateY(360deg)}}
+.fx-dots{position:absolute;border-radius:50%;box-sizing:border-box;border:2px dotted currentColor}
+.fx-dots.mer{border-color:rgba(190,160,255,.7)}
+.fx-tilt{position:absolute;inset:0}
+.fx-orb3{position:absolute;left:50%;top:50%;border-radius:50%;box-sizing:border-box;border:2px dotted currentColor;animation:fx-rot 30s linear infinite}
+.fx-orb3.rev{animation-duration:22s;animation-direction:reverse}
+.fx-orb3.slow{animation-duration:40s}
+.fx-orb3::before{content:"";position:absolute;left:50%;top:-5px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:currentColor;box-shadow:0 0 14px 3px currentColor}
+
+/* ---------- Señal de voz (abajo a la derecha) ---------- */
+.signal-box{position:absolute;right:48px;bottom:36px;width:150px;padding:12px 14px;background:rgba(8,16,40,.55);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);border-radius:14px}
+.signal-title{font-size:11px;letter-spacing:.02em;text-transform:none;opacity:.7;margin-bottom:8px}
+.signal-bars{display:flex;align-items:flex-end;gap:3px;height:34px}
+.signal-bars i{flex:1;height:100%;border-radius:2px;transform-origin:bottom;background:linear-gradient(to top,#b46bff,var(--accent));transition:transform 90ms linear}
+@media (prefers-reduced-motion:reduce){.fx-neb,.fx-star,.fx-globe-spin,.fx-orb3{animation:none!important}}

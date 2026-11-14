@@ -1,4 +1,8 @@
 import { ToolConstellation, CodeColumns } from './ToolConstellation'
+import { UniverseGlobe } from './UniverseGlobe'
+
+// Altura relativa de cada barra de la señal de voz (solo estética; la amplitud real es `level`).
+const SIGNAL_K = [0.6, 0.85, 0.5, 1, 0.7, 0.9, 0.55, 0.8, 0.65, 1, 0.5, 0.75, 0.9, 0.6]
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useStore, accentFor, type Phase } from '../store'
@@ -208,6 +212,7 @@ export function Hud() {
       {/* Constelación de herramientas (solo en fase "tooling") y columnas de datos en los bordes */}
       {phase !== 'offline' && (
         <div className="central-orb-layer" style={{ zIndex: 2, pointerEvents: 'none' }}>
+          <UniverseGlobe />
           <ToolConstellation />
         </div>
       )}
@@ -238,13 +243,14 @@ export function Hud() {
         </aside>
       )}
 
-      {/* Right rail: live telemetry, mostly for flavour */}
-      <aside className="rail rail-right">
-        <div className="rail-title">SIGNAL</div>
-        <div className="meter">
-          <div className="meter-fill" style={{ height: `${level * 100}%` }} />
+      {/* Señal de voz: caja pequeña abajo a la derecha */}
+      <aside className="signal-box" aria-label="Señal de voz">
+        <div className="signal-title">Señal de voz</div>
+        <div className="signal-bars">
+          {SIGNAL_K.map((k, i) => (
+            <i key={i} style={{ transform: `scaleY(${(0.12 + level * 0.88 * k).toFixed(2)})` }} />
+          ))}
         </div>
-        <div className="rail-item mono">{(level * 100).toFixed(0).padStart(3, '0')}%</div>
       </aside>
 
       <AnimatePresence>
