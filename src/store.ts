@@ -1,5 +1,17 @@
 import { create } from 'zustand'
 
+export type SubagentCall = { name: string; ok: boolean | null }
+export type SubagentView = {
+  id: string
+  name: string
+  role: string
+  task: string
+  status: 'running' | 'completed' | 'failed'
+  startedAt: number
+  endedAt?: number
+  calls: SubagentCall[]
+}
+
 export type Phase =
   | 'offline'   // waiting for the click that unlocks audio
   | 'boot'      // startup sequence
@@ -218,6 +230,8 @@ type State = {
   caption: string
   turns: Turn[]
   activeTool: string | null
+  /** Subagente en ejecución (o recién terminado), para la pantalla de delegación. */
+  subagent: SubagentView | null
   error: string | null
   connected: string[]
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
@@ -256,6 +270,10 @@ type State = {
   setLevel: (l: number) => void
   setCaption: (c: string) => void
   setActiveTool: (t: string | null) => void
+  setSubagent: (s: SubagentView | null) => void
+  startSubagentCall: (name: string) => void
+  endSubagentCall: (ok: boolean) => void
+  finishSubagent: (id: string, status: 'completed' | 'failed') => void
   setError: (e: string | null) => void
   setConnected: (c: string[]) => void
   pushTurn: (t: Turn) => void
@@ -276,6 +294,7 @@ export const useStore = create<State>((set) => ({
   caption: '',
   turns: [],
   activeTool: null,
+  subagent: null,
   error: null,
   connected: [],
   voice: '',
@@ -350,6 +369,23 @@ export const useStore = create<State>((set) => ({
   setLevel: (level) => set({ level }),
   setCaption: (caption) => set({ caption }),
   setActiveTool: (activeTool) => set({ activeTool }),
+  setSubagent: (subagent) => set({ subagent }),
+  startSubagentCall: (name) =>
+    set((s) => (s.subagent ? { subagent: { ...s.subagent, calls: [...s.subagent.calls, { name, ok: null }] } } : {})),
+  endSubagentCall: (ok) =>
+    set((s) => {
+      if (!s.subagent) return {}
+      const calls = [...s.subagent.calls]
+      for (let i = calls.length - 1; i >= 0; i--) {
+        if (calls[i].ok === null) {
+          calls[i] = { ...calls[i], ok }
+          break
+        }
+      }
+      return { subagent: { ...s.subagent, calls } }
+    }),
+  finishSubagent: (id, status) =>
+    set((s) => (s.subagent && s.subagent.id === id ? { subagent: { ...s.subagent, status, endedAt: Date.now() } } : {})),
   setError: (error) => set({ error }),
   setConnected: (connected) => set({ connected }),
   pushTurn: (turn) => set((s) => ({ turns: [...s.turns.slice(-40), turn] })),

@@ -1,3 +1,5 @@
+import { PhaseAura } from './ui/PhaseAura'
+import { SubagentView } from './ui/SubagentView'
 import { useEffect, useRef } from 'react'
 import { Scene } from './scene/Scene'
 import { Hud } from './ui/Hud'
@@ -872,11 +874,13 @@ export default function App() {
   return (
     <>
       <Background />
+      <PhaseAura />
       <Scene />
       <Hud />
       <PersonalAssistant />
       <Boot />
       <Diagnostics />
+      <SubagentView />
       <Ignition onStart={() => void powerOn()} />
     </>
   )

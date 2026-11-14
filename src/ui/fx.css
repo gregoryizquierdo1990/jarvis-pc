@@ -1,0 +1,43 @@
+/* Capas visuales sutiles: aura de fase, constelación de herramientas, columnas de datos y pantalla de subagente. */
+.fx-aura{position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen;overflow:hidden;z-index:0}
+.fx-aura-img{position:absolute;left:-6%;top:-6%;width:112%;height:112%;object-fit:cover;transition:opacity 1.4s ease;animation:fx-drift 52s ease-in-out infinite alternate;will-change:transform}
+@keyframes fx-drift{to{transform:translate3d(-2.5%,2%,0) scale(1.06)}}
+
+.fx-const{width:min(78vmin,760px);height:min(78vmin,760px);overflow:visible;pointer-events:none}
+.fx-node{animation:fx-in .6s ease both}
+@keyframes fx-in{from{opacity:0}to{opacity:1}}
+.fx-link{stroke:currentColor;stroke-width:1;stroke-opacity:.55;stroke-dasharray:4 8;animation:fx-flow 1.2s linear infinite}
+.fx-link.done{animation:none;stroke-opacity:.2}
+@keyframes fx-flow{to{stroke-dashoffset:-24}}
+.fx-halo{fill:none;stroke:currentColor;stroke-width:1.2;transform-box:fill-box;transform-origin:center;animation:fx-ping 1.6s ease-out infinite}
+@keyframes fx-ping{from{opacity:.8;transform:scale(1)}to{opacity:0;transform:scale(2.6)}}
+.fx-label{font:500 12px ui-monospace,'JetBrains Mono',monospace;fill:currentColor}
+
+.fx-code{position:fixed;top:0;bottom:0;width:90px;overflow:hidden;pointer-events:none;z-index:1;opacity:.16;animation:fx-in 1s ease both;
+  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(to bottom,transparent,#000 22%,#000 78%,transparent)}
+.fx-code pre{margin:0;font:11px/1.6 ui-monospace,'JetBrains Mono',monospace;color:currentColor;animation:fx-scroll 26s linear infinite}
+@keyframes fx-scroll{to{transform:translateY(-50%)}}
+
+.fx-sub{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(ellipse at 50% 38%,rgba(10,28,74,.95),rgba(2,3,15,.98) 72%);color:#cfe9ff}
+.fx-sub-card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:56px;align-items:center;width:min(1000px,100%)}
+@media (max-width:760px){.fx-sub-card{grid-template-columns:1fr;gap:24px}.fx-sub-ring{margin:0 auto}}
+.fx-sub-ring{position:relative;width:300px;height:300px}
+.fx-sub-ring svg{position:absolute;inset:0}
+.fx-spin{transform-origin:center;animation:fx-rot 2.4s linear infinite}
+@keyframes fx-rot{to{transform:rotate(360deg)}}
+.fx-orbit{position:absolute;left:50%;top:50%;border-radius:50%;box-sizing:border-box;border:2px dotted currentColor;animation:fx-rot 24s linear infinite;opacity:.7}
+.fx-sub-time{position:absolute;inset:0;display:grid;place-content:center;text-align:center;font-weight:700;font-size:46px;color:#eaf6ff}
+.fx-sub-time small{display:block;font-size:12px;font-weight:400;color:#8fb0d6}
+.fx-sub h2{margin:6px 0 2px;font-size:32px;color:#eaf6ff}
+.fx-sub .role{color:#8fb0d6;font-size:15px}
+.fx-sub .task{margin:14px 0 20px;font-size:16px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.fx-calls{background:rgba(8,16,40,.55);border:1px solid rgba(110,190,255,.22);border-radius:14px;padding:8px 18px}
+.fx-call{display:flex;align-items:center;gap:12px;padding:9px 0;font-size:14px}
+.fx-call i{flex:none;width:9px;height:9px;border-radius:50%}
+.fx-call span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fx-call em{font-style:normal;font-size:12px;color:#8fb0d6}
+.fx-sub-foot{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px;font-size:13px;color:#8fb0d6}
+.fx-sub button{min-height:44px;padding:0 18px;border-radius:999px;background:rgba(8,16,40,.6);color:#cfe9ff;border:1px solid rgba(110,190,255,.3);font:inherit;cursor:pointer}
+.fx-sub button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.fx-aura-img,.fx-link,.fx-halo,.fx-code pre,.fx-spin,.fx-orbit{animation:none!important}}

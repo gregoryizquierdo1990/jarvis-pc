@@ -1,3 +1,4 @@
+import { ToolConstellation, CodeColumns } from './ToolConstellation'
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useStore, accentFor, type Phase } from '../store'
@@ -203,6 +204,14 @@ export function Hud() {
           </span>
         </div>
       </header>
+
+      {/* Constelación de herramientas (solo en fase "tooling") y columnas de datos en los bordes */}
+      {phase !== 'offline' && (
+        <div className="central-orb-layer" style={{ zIndex: 2, pointerEvents: 'none' }}>
+          <ToolConstellation />
+        </div>
+      )}
+      <CodeColumns />
 
       {/* Orbe de pensamiento interactivo centrado en el reactor principal */}
       {phase !== 'offline' && (

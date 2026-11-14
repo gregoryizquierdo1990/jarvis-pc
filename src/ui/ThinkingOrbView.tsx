@@ -1,6 +1,6 @@
 import { Component, type ReactNode } from 'react'
 import { ThinkingOrb } from 'thinking-orbs'
-import { useStore, type Phase } from '../store'
+import { useStore, accentFor, type Phase } from '../store'
 
 class OrbErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   state = { hasError: false }
@@ -41,6 +41,15 @@ export function ThinkingOrbView({
 }) {
   const phase = useStore((s) => s.phase)
   const activeTool = useStore((s) => s.activeTool)
+  const ui = useStore((s) => s.ui)
+  // Nivel de voz en pasos de 0.25: el store lo actualiza cada frame y no hace
+  // falta re-renderizar el orbe a 60 fps para que reaccione.
+  const level = useStore((s) => Math.round(s.level * 4) / 4)
+  // El mismo color que usan el reactor 3D y los carriles del HUD, así el orbe
+  // cambia con la fase (cian en espera, ámbar pensando, violeta con
+  // herramientas, verde hablando) y respeta los temas que Milos aplique.
+  const accent = accentFor(phase, ui)
+  const glow = (pct: number) => `color-mix(in srgb, ${accent} ${pct}%, transparent)`
   const orbState = mapPhaseToOrbState(phase, activeTool)
 
   const isLive = phase === 'listening' || phase === 'speaking' || phase === 'thinking' || phase === 'tooling'
@@ -67,16 +76,17 @@ export function ThinkingOrbView({
       <div
         onClick={onClick}
         title={`Milos: ${phase.toUpperCase()} (${orbState}) — Clic para interactuar`}
-        className="relative flex items-center justify-center rounded-full cursor-pointer transition-all duration-700 hover:scale-105"
+        className="relative flex items-center justify-center rounded-full cursor-pointer hover:scale-105"
         style={{
           width: `${size}px`,
           height: `${size}px`,
           background: isLive
-            ? 'radial-gradient(circle, rgba(0, 240, 255, 0.16) 0%, rgba(138, 43, 226, 0.08) 50%, rgba(0, 0, 0, 0) 75%)'
-            : 'radial-gradient(circle, rgba(0, 229, 255, 0.08) 0%, rgba(0, 0, 0, 0) 70%)',
+            ? `radial-gradient(circle, ${glow(18 + level * 14)} 0%, ${glow(6)} 55%, rgba(0, 0, 0, 0) 75%)`
+            : `radial-gradient(circle, ${glow(9)} 0%, rgba(0, 0, 0, 0) 70%)`,
           boxShadow: isLive
-            ? '0 0 45px rgba(0, 240, 255, 0.35), inset 0 0 25px rgba(0, 240, 255, 0.15)'
-            : '0 0 20px rgba(0, 229, 255, 0.1)',
+            ? `0 0 ${45 + level * 40}px ${glow(35 + level * 20)}, inset 0 0 25px ${glow(15)}`
+            : `0 0 20px ${glow(10)}`,
+          transition: 'box-shadow 160ms linear, background 160ms linear',
         }}
       >
         <div
@@ -88,7 +98,7 @@ export function ThinkingOrbView({
             justifyContent: 'center',
           }}
         >
-          <ThinkingOrb state={orbState} size={64} theme="dark" speed={1.2} />
+          <ThinkingOrb state={orbState} size={64} theme="dark" color={accent} speed={1.2 + level * 0.8} />
         </div>
       </div>
     </OrbErrorBoundary>

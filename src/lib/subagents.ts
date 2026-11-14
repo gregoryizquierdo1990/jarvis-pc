@@ -5,6 +5,7 @@
  * prompt, limitaciones y herramientas específicas, ejecutarlos y recibir sus resultados.
  */
 
+import { useStore } from '../store'
 import * as api from './geminiApi'
 import * as obsidian from './obsidian'
 
@@ -41,6 +42,16 @@ export async function executeSubagent(
     createdAt: Date.now(),
   }
   activeSubagents.unshift(subagent)
+
+  // Pantalla de delegación: refleja en vivo lo que hace este subagente.
+  const ui = () => useStore.getState()
+  ui().setSubagent({ id, name: spec.name, role: spec.role, task: spec.task, status: 'running', startedAt: subagent.createdAt, calls: [] })
+  const closeView = (status: 'completed' | 'failed') => {
+    ui().finishSubagent(id, status)
+    setTimeout(() => {
+      if (ui().subagent?.id === id) ui().setSubagent(null)
+    }, status === 'completed' ? 1600 : 2400)
+  }
 
   const fullPrompt = `Eres el subagente "${spec.name}", operando bajo el mando y supervisión directa de Agente Milos.
 CARGO: ${spec.role}
@@ -89,11 +100,13 @@ Responde en español con el informe final o solución para entregar a tu supervi
           const fnName = fc.functionCall.name
           const fnArgs = fc.functionCall.args || {}
           let result: any
+          ui().startSubagentCall(fnName)
           try {
             result = await executeToolFn(fnName, fnArgs)
           } catch (err: any) {
             result = { error: err.message || String(err) }
           }
+          ui().endSubagentCall(!(result && typeof result === 'object' && 'error' in result))
           functionResponses.push({
             functionResponse: {
               name: fnName,
@@ -119,10 +132,12 @@ Responde en español con el informe final o solución para entregar a tu supervi
       void obsidian.writeNote(`Milos/Subagentes/${new Date().toISOString().slice(0, 10)}-${spec.name}.md`, logMd)
     } catch {}
 
+    closeView('completed')
     return { ok: true, result: subagent.result, subagent }
   } catch (err: any) {
     subagent.status = 'failed'
     subagent.result = `Error en ejecución del subagente: ${err.message || String(err)}`
+    closeView('failed')
     return { ok: false, result: subagent.result, subagent }
   }
 }
