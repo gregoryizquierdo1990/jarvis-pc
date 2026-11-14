@@ -138,6 +138,16 @@ export async function generateContent(
         if (!res.ok) {
           const errJson = await res.json().catch(() => ({}))
           const rawMessage = errJson?.error?.message || `HTTP ${res.status}`
+          const isAuthError =
+            res.status === 400 ||
+            res.status === 401 ||
+            res.status === 403 ||
+            /api key not valid/i.test(rawMessage)
+
+          if (isAuthError && typeof window !== 'undefined' && localStorage.getItem('jarvis_gemini_key') === apiKey) {
+            localStorage.removeItem('jarvis_gemini_key')
+          }
+
           if (isRetryable(res.status, rawMessage)) {
             lastRetryable = true
             lastMessage = rawMessage
@@ -154,6 +164,12 @@ export async function generateContent(
               if (moreHere) continue
               break // siguiente modelo de la cadena
             }
+          }
+
+          if (isAuthError) {
+            throw new Error(
+              'Señor, la clave API de Gemini no es válida o expiró. Verifique VITE_GEMINI_API_KEY en su archivo .env.local.',
+            )
           }
           throw new Error(rawMessage)
         }
